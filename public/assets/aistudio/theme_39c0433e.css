@@ -1,0 +1,1043 @@
+/* =========================================================================
+   Tichu Counter — visual refresh / design system
+   -------------------------------------------------------------------------
+   Loaded AFTER main.css (Materialize + legacy custom styles) so these rules
+   win on equal specificity. This file introduces one cohesive palette,
+   real dark mode, and modernized cards / controls without touching the
+   app's scoring logic or markup structure.
+
+   Palette model (kept intentionally small):
+     - brand   : one primary action / accent color (card-table green)
+     - team A  : warm amber  — used everywhere Team A appears
+     - team B  : cool azure  — used everywhere Team B appears
+     - neutrals: bg / surface / border / text tiers
+   Light and dark are the same system with swapped neutral + tuned accents.
+   ========================================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* Warm ivory surfaces and deep table-felt green keep the game identity
+     present without competing with live score entry. */
+  --bg: #f2f0e8;
+  --surface: #fffdf8;
+  --surface-2: #f5f1e7;
+  --surface-3: #e9e3d5;
+  --border: #e1dacb;
+  --border-strong: #c9beaa;
+  --text: #202b26;
+  --text-muted: #58675f;
+  --text-faint: #7d8981;
+
+  --brand: #18583f;
+  --brand-strong: #104832;
+  --nav-bg: #104832;
+  --brand-soft: rgba(24, 88, 63, 0.12);
+  --on-brand: #ffffff;
+
+  --team-a: #a96313;
+  --team-a-fill: #d6942e;
+  --team-a-soft: rgba(214, 148, 46, 0.16);
+  --team-b: #326c83;
+  --team-b-fill: #4b91a8;
+  --team-b-soft: rgba(75, 145, 168, 0.16);
+  --team-c: #80549a;
+
+  --danger: #bd4540;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(38, 40, 29, 0.06), 0 2px 5px rgba(38, 40, 29, 0.07);
+  --shadow-2: 0 8px 22px rgba(38, 40, 29, 0.13);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111b16;
+  --surface: #1b2921;
+  --surface-2: #26372b;
+  --surface-3: #344639;
+  --border: #405344;
+  --border-strong: #647666;
+  --text: #f4f0e5;
+  --text-muted: #c5cbbd;
+  --text-faint: #a4b0a1;
+
+  --brand: #73c59c;
+  --brand-strong: #90d6b1;
+  --nav-bg: #103c2d;
+  --brand-soft: rgba(115, 197, 156, 0.16);
+  --on-brand: #10251a;
+
+  --team-a: #efbd6b;
+  --team-a-fill: #efbd6b;
+  --team-a-soft: rgba(239, 189, 107, 0.16);
+  --team-b: #8bc4d1;
+  --team-b-fill: #8bc4d1;
+  --team-b-soft: rgba(139, 196, 209, 0.16);
+  --team-c: #d3b2e2;
+  --danger: #f39b8f;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------------------------------------------------------------- base --- */
+
+html {
+  background-color: var(--bg);
+}
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  font-weight: 700;
+}
+a {
+  color: var(--brand);
+}
+::selection {
+  background: var(--brand-soft);
+}
+.grey-text,
+.helper-text,
+.empty-state {
+  color: var(--text-muted) !important;
+}
+.divider {
+  color: var(--text-faint);
+}
+s {
+  text-decoration-color: var(--danger);
+}
+
+/* ----------------------------------------------------------------- nav --- */
+
+nav,
+nav .nav-wrapper {
+  background-color: var(--surface);
+  box-shadow: none;
+  border-bottom: 1px solid var(--border);
+  height: 60px;
+  line-height: 60px;
+}
+nav a,
+nav .material-icons {
+  color: var(--text-muted);
+}
+nav ul a {
+  padding: 0 14px;
+  transition: color 120ms ease, background-color 120ms ease;
+  border-radius: var(--radius-sm);
+}
+nav ul a:hover {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+nav ul a:active {
+  color: var(--brand);
+}
+/* ------------------------------------------------------------ info bar --- */
+
+.info-bar {
+  background-color: var(--surface);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+.info-bar .divider {
+  color: var(--border-strong);
+}
+#session-tag {
+  color: var(--text-faint);
+}
+
+/* --------------------------------------------------------------- cards --- */
+
+.card,
+.card-panel {
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.card .card-content {
+  padding: 18px 14px;
+  color: var(--text);
+}
+
+/* Team cards get a top accent bar so A vs B is legible at a glance and
+   consistent with the table, progress bar and chart. */
+.card#A { border-top: 3px solid var(--team-a); }
+.card#B { border-top: 3px solid var(--team-b); }
+
+.card .card-content .points {
+  font-size: 2.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0 10px;
+}
+.card#A .card-content .points { color: var(--team-a); }
+.card#B .card-content .points { color: var(--team-b); }
+
+/* editable team name — signal that it is an input */
+.team-name {
+  color: var(--text);
+  border-bottom: 1px dashed var(--border-strong);
+  border-radius: 6px 6px 0 0;
+  padding: 2px 4px;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.team-name:hover {
+  background-color: var(--surface-2);
+}
+.card#A .team-name:focus { border-bottom: 2px solid var(--team-a); }
+.card#B .team-name:focus { border-bottom: 2px solid var(--team-b); }
+#teamAName[readonly],
+#teamBName[readonly] {
+  border-bottom-color: transparent;
+}
+#teamAName[readonly]:hover,
+#teamBName[readonly]:hover {
+  background-color: transparent;
+}
+
+/* -------------------------------------------------- points stepper (± ) --- */
+
+.card .card-content .adding-points {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  font-size: 1.25rem;
+}
+.card .card-content .adding-points .temp-points {
+  flex: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.card .card-content .adding-points .minus,
+.card .card-content .adding-points .plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.card .card-content .adding-points .minus:active,
+.card .card-content .adding-points .plus:active {
+  background-color: var(--surface-3);
+}
+.card .card-content .adding-points .material-icons {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------- tichu selector --- */
+
+.tichu-modifier {
+  margin-top: 12px;
+}
+.card .card-content .tichu-modifier .btn {
+  width: 100%;
+  height: 44px;
+  line-height: 44px;
+  padding: 0 12px;
+  background-color: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.card .card-content .tichu-modifier .btn:hover {
+  background-color: var(--surface-3);
+}
+
+/* dropdown menu (Materialize renders it plain white by default) */
+.dropdown-content {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.dropdown-content li > a,
+.dropdown-content li > span {
+  color: var(--text) !important;
+  font-weight: 500;
+}
+.dropdown-content li:hover,
+.dropdown-content li.active {
+  background-color: var(--surface-2);
+}
+
+/* ----------------------------------------------------------- checkboxes --- */
+
+.double-win [type="checkbox"].filled-in:checked + label:after {
+  background-color: var(--brand);
+  border-color: var(--brand);
+}
+.double-win [type="checkbox"].filled-in:checked + label:before {
+  border-right-color: var(--on-brand);
+  border-bottom-color: var(--on-brand);
+}
+[type="checkbox"].filled-in:not(:checked) + label:after {
+  border-color: var(--text-faint);
+}
+.double-win label,
+[type="checkbox"] + label {
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------- buttons --- */
+
+.btn,
+.btn-large,
+.btn-small {
+  background-color: var(--brand);
+  color: var(--on-brand);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  text-transform: none;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: background-color 120ms ease, transform 60ms ease;
+}
+.btn:hover,
+.btn-large:hover,
+.btn-small:hover {
+  background-color: var(--brand-strong);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:focus {
+  background-color: var(--brand-strong);
+}
+.btn-flat {
+  color: var(--brand);
+  text-transform: none;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+}
+.btn-flat.red-text {
+  color: var(--danger) !important;
+}
+.waves-effect .waves-ripple {
+  background-color: rgba(255, 255, 255, 0.4);
+}
+#btn-next {
+  height: 50px;
+  line-height: 50px;
+  font-size: 1rem;
+}
+
+/* --------------------------------------------------------------- inputs --- */
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input:not([type]) {
+  color: var(--text);
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow: none;
+}
+input[type="text"]:focus:not([readonly]),
+input[type="number"]:focus:not([readonly]),
+input:not([type]):focus:not([readonly]) {
+  border-bottom: 1px solid var(--brand);
+  box-shadow: 0 1px 0 0 var(--brand);
+}
+input::placeholder {
+  color: var(--text-faint);
+}
+label {
+  color: var(--text-muted);
+}
+.input-field > label {
+  color: var(--text-faint);
+}
+select.browser-default,
+.ranking-sort select {
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+/* ------------------------------------------------------- mode hint / nudge --- */
+
+#mode-hint {
+  background-color: var(--surface-2);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+#mode-hint a {
+  color: var(--brand);
+}
+
+/* ----------------------------------------------------------- win states --- */
+
+#win-banner {
+  background-color: var(--brand);
+  color: var(--on-brand);
+}
+#win-banner a {
+  color: var(--on-brand);
+}
+
+/* --------------------------------------------------------- game progress --- */
+
+#game-progress {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.game-progress-heading {
+  color: var(--brand);
+}
+.game-progress-heading,
+.progress-remaining {
+  color: var(--text-muted);
+}
+#progress-score-summary {
+  color: var(--text-faint);
+}
+.progress-track {
+  background-color: var(--surface-3);
+}
+.progress-fill-a { background-color: var(--team-a-fill); }
+.progress-fill-b { background-color: var(--team-b-fill); }
+.progress-remaining span:first-child { color: var(--team-a); }
+.progress-remaining span:last-child { color: var(--team-b); }
+.progress-goal-marker {
+  background-color: var(--text-faint);
+}
+.progress-goal-marker span {
+  background-color: var(--surface);
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------- round-scores table --- */
+
+table.striped > tbody > tr:nth-child(odd) {
+  background-color: var(--surface-2);
+}
+table th,
+table td {
+  color: var(--text);
+  border-radius: 0;
+}
+table thead th {
+  color: var(--text-muted);
+}
+#team-a-header,
+#team-a-total-points-label,
+#team-a-points-label,
+#team-a-tichu-label,
+#round-scores td:nth-child(2),
+#round-scores td:nth-child(3),
+#round-scores td:nth-child(4) {
+  background-color: var(--team-a-soft);
+}
+#team-b-header,
+#team-b-total-points-label,
+#team-b-points-label,
+#team-b-tichu-label,
+#round-scores td:nth-child(5),
+#round-scores td:nth-child(6),
+#round-scores td:nth-child(7) {
+  background-color: var(--team-b-soft);
+}
+#team-a-header { color: var(--team-a); }
+#team-b-header { color: var(--team-b); }
+
+#three-team-scores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 10px 2px;
+}
+#three-team-scores.hidden { display: none; }
+#win-banner-close.hidden { display: none; }
+.three-team-target {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.three-team-score {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  border-top: 3px solid var(--team-color);
+}
+.three-team-score strong, .three-team-score span { display: block; }
+.three-team-score > span:first-child {
+  min-height: 3em;
+}
+.three-team-score-value {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 6px;
+}
+.three-team-score strong { font-size: 1.3rem; color: var(--team-color); }
+.three-team-score .remaining-label { color: var(--text-muted); font-size: 0.75rem; }
+.three-team-progress {
+  height: 7px;
+  margin: 6px 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-3);
+  overflow: hidden;
+}
+.three-team-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--team-color);
+}
+.three-team-score .resting-label { color: var(--text-muted); font-size: 0.75rem; }
+.team-index-0 { --team-color: var(--team-a); }
+.team-index-1 { --team-color: var(--team-b); }
+.team-index-2 { --team-color: var(--team-c); }
+body.three-team-mode .card#A,
+body.three-team-mode .card#B { border-top-color: var(--team-color); }
+body.three-team-mode .card#A .card-content .points,
+body.three-team-mode .card#B .card-content .points { color: var(--team-color); }
+#round-scores .team-c-column { background-color: rgba(144, 90, 190, 0.16); }
+#round-scores th.team-c-column { color: var(--team-c); }
+
+#chart-wrapper {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+@media (orientation: landscape) {
+  #graph-container.landscape-graph {
+    background-color: var(--bg);
+  }
+}
+
+/* --------------------------------------------------- collections / lists --- */
+
+.collection {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.collection .collection-item {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.collection .collection-item:last-child {
+  border-bottom: 0;
+}
+.collection a.collection-item {
+  color: var(--text);
+}
+
+.ranking-row-link,
+.player-row-link {
+  color: var(--text);
+}
+.ranking-row-link:hover {
+  background-color: var(--surface-2);
+}
+.ranking-position {
+  color: var(--text-faint);
+}
+.ranking-value {
+  color: var(--text-muted);
+}
+.ranking-row-link:after,
+.player-row-link:after {
+  color: var(--text-faint);
+}
+.ranking-sort label {
+  color: var(--text-muted);
+}
+#ranking-panel {
+  border-top: 1px solid var(--border);
+}
+
+/* selected player pick row — use team-A amber tint to match the app accent */
+.player-pick-row.selected {
+  background-color: var(--team-a-soft);
+}
+#pick-status {
+  color: var(--text-muted);
+}
+.session-actions-secondary {
+  border-top-color: var(--border);
+}
+.game-row .icon-action {
+  color: var(--text-faint);
+}
+
+/* --------------------------------------------------------------- chips --- */
+
+.chip {
+  background-color: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* ----------------------------------------------------------- team previews --- */
+
+.team-preview-card {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.team-preview-label {
+  color: var(--text-faint);
+}
+.teams-preview .team-preview-card:first-child {
+  border-top: 3px solid var(--team-a);
+}
+.teams-preview .team-preview-card:last-child {
+  border-top: 3px solid var(--team-b);
+}
+.teams-preview .team-preview-card[class*="team-index-"] {
+  border-top: 3px solid var(--team-color);
+}
+
+/* -------------------------------------------------------- statistics UI --- */
+
+.stat-card,
+.session-status-card,
+.session-summary-card,
+.stats-list.card-panel,
+.session-count.card-panel {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.stats-hero {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--brand);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.stats-hero strong {
+  color: var(--brand);
+}
+.stats-label,
+.status-label {
+  color: var(--text-faint);
+}
+.stats-list > div {
+  border-bottom: 1px solid var(--border);
+}
+.player-avatar {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.player-name-button:hover,
+.player-name-button:focus,
+.history-summary:hover {
+  color: var(--brand);
+}
+
+/* ---------------------------------------------------- larger tap targets --- */
+
+@media (max-width: 480px) {
+  nav ul a {
+    padding: 0 12px;
+  }
+  .card .card-content {
+    padding: 16px 12px;
+  }
+}
+
+/* =========================================================================
+   Follow-up polish
+   -------------------------------------------------------------------------
+   1. Labelled, consistent icon nav (every action now names itself)
+   2. Tighter scoring header so the team cards sit higher in the viewport
+   3. Friendlier, centered empty states
+   4. Clearer "this name is editable" affordance on the team cards
+   ========================================================================= */
+
+/* ---- 1. labelled, consistent nav --------------------------------------- */
+
+nav,
+nav .nav-wrapper {
+  height: 64px;
+  line-height: normal;
+}
+nav .nav-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+nav ul#nav-mobile,
+nav ul#nav-mobile-right {
+  display: flex;
+  align-items: stretch;
+  height: 64px;
+  margin: 0;
+}
+nav ul li {
+  display: flex;
+  height: 64px;
+}
+/* Icon + small caption stacked above Materialize's navigation styles. */
+nav ul a[data-label] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 44px;
+  box-sizing: border-box;
+  height: 64px;
+  padding: 0 11px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+nav ul a[data-label] .material-icons {
+  height: auto;
+  margin: 0;
+  line-height: 1;
+  font-size: 23px;
+}
+nav ul a[data-label]::after {
+  content: attr(data-label);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms ease, visibility 120ms ease;
+}
+/* Captions are useful as persistent labels on touch screens, where hover
+   is unavailable. On mouse interfaces they stay out of the way until the
+   action is hovered or keyboard-focused. */
+@media (hover: hover) and (pointer: fine) {
+  nav ul a[data-label]::after {
+    opacity: 0;
+    visibility: hidden;
+  }
+  nav ul a[data-label]:hover::after,
+  nav ul a[data-label]:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+@media only screen and (max-width: 380px) {
+  nav ul a[data-label] {
+    padding: 0 8px;
+  }
+  nav ul a[data-label]::after {
+    font-size: 0.56rem;
+    letter-spacing: 0.02em;
+  }
+}
+
+/* ------------------------------------------------------- table-night system */
+
+html,
+body {
+  background-color: var(--bg);
+}
+
+nav,
+nav .nav-wrapper {
+  background-color: var(--nav-bg);
+  border-bottom-color: rgba(255, 255, 255, 0.13);
+}
+nav a,
+nav .material-icons,
+nav ul a[data-label]::after {
+  color: #f6f3e9;
+}
+nav ul a[data-label]:hover,
+nav ul a[data-label]:focus-visible {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+nav ul a[data-label]:active {
+  color: #f0c779;
+}
+nav ul a[data-label]::after {
+  opacity: 1;
+  visibility: visible;
+}
+.info-bar {
+  background-color: var(--surface);
+  border-bottom-color: var(--border);
+  color: var(--text-muted);
+  flex-wrap: wrap;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.settings-page {
+  max-width: 620px;
+  padding-bottom: 32px;
+}
+.settings-section {
+  padding: 18px;
+}
+.settings-section h5 {
+  margin: 0 0 16px;
+  font-size: 1.15rem;
+}
+.settings-section label {
+  display: block;
+  margin-bottom: 6px;
+}
+.settings-section select.browser-default {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+}
+#custom-threshold-field {
+  margin-top: 16px;
+}
+#threshold-status:empty {
+  display: none;
+}
+
+.page-heading {
+  margin: 20px 0 22px;
+}
+.page-heading h4 {
+  margin-bottom: 6px;
+  letter-spacing: -0.025em;
+}
+.page-heading .helper-text {
+  margin-top: 0;
+  font-size: 0.95rem;
+}
+.empty-state {
+  max-width: 560px;
+  margin: 28px auto;
+  padding: 26px 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  text-align: center;
+}
+.empty-state .material-icons {
+  color: var(--brand);
+  opacity: 0.72;
+}
+
+.collection,
+.collection .collection-item,
+.card,
+.card-panel,
+.stat-card,
+.session-status-card,
+.session-summary-card,
+.stats-list.card-panel,
+.session-count.card-panel,
+.team-preview-card,
+.three-team-score {
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.card#A,
+.card#B {
+  transition-property: background-color, box-shadow;
+}
+.ranking-row-link,
+.player-row-link {
+  min-height: 52px;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.ranking-row-link:hover,
+.player-row-link:hover {
+  background-color: var(--surface-2);
+}
+.row.add-player-row {
+  display: flex;
+  align-items: flex-end;
+  margin: 20px 0 12px;
+  padding: 12px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.row.add-player-row .input-field {
+  margin-top: 0;
+}
+#add-player-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.btn,
+.btn-large,
+.btn-small,
+.btn-flat,
+.icon-action,
+.session-delete-action,
+.card .card-content .adding-points .minus,
+.card .card-content .adding-points .plus,
+.card .card-content .tichu-modifier .btn {
+  min-height: 44px;
+}
+:focus-visible {
+  outline: 3px solid #d49a35;
+  outline-offset: 3px;
+}
+
+#game-progress,
+.stats-hero,
+.session-status-card,
+.session-summary-card {
+  background-color: var(--surface);
+}
+
+@media (max-width: 600px) {
+  .page-heading {
+    margin: 18px 0;
+  }
+  .empty-state {
+    margin: 22px auto;
+    padding: 22px 18px;
+  }
+  .info-bar {
+    padding: 8px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ---- 2. tighter scoring header lifts the team cards -------------------- */
+
+.info-bar {
+  padding: 6px 12px;
+  font-size: 0.72rem;
+}
+#game-progress {
+  margin: 8px 10px 2px;
+  padding: 12px 12px 6px;
+}
+.game-progress-heading {
+  margin-bottom: 6px;
+}
+.progress-remaining {
+  margin-top: 8px;
+}
+.row {
+  margin-bottom: 10px;
+}
+.row .col .card,
+.card#A,
+.card#B {
+  margin-top: 8px;
+}
+#btn-next {
+  margin-top: 6px;
+}
+
+/* ---- 3. friendlier empty states ---------------------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty-state .material-icons {
+  font-size: 42px;
+  color: var(--text-faint);
+}
+.empty-state p {
+  margin: 0;
+  max-width: 34ch;
+  line-height: 1.5;
+}
+.empty-state .btn {
+  margin-top: 4px;
+}
+/* single-line list empties get the same calm, centered treatment */
+.collection .collection-item.is-empty {
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ---- 4. clearer editable-name affordance ------------------------------- */
+
+.team-name {
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a97a5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 13px 13px;
+}
+/* in session mode the names are read-only, so drop the affordance */
+#teamAName[readonly],
+#teamBName[readonly] {
+  padding-right: 4px;
+  background-image: none;
+}
+/* ---- round-scores: horizontal scroll on narrow screens -------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll table {
+  min-width: 560px;
+}

@@ -1,0 +1,107 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Round Scores</title>
+
+    <script type="text/javascript">
+      var host = "michelvw.github.io";
+      if ((host == window.location.host) && (window.location.protocol != "https:"))
+        window.location.protocol = "https";
+    </script>
+
+    <script type="text/javascript">
+      // Register the service worker (replaces the old AppCache manifest).
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("service-worker.js").catch(function (err) {
+            console.warn("Service worker registration failed:", err);
+          });
+        });
+      }
+    </script>
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#104832">
+    <link rel="icon" type="image/svg+xml" href="dragon-icon.svg">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <link rel="canonical" href="https://michelvw.github.io/tichu-counter/" />
+    
+    <link rel="stylesheet" href="main.css">
+    <script src="js/theme.js"></script>
+    <link rel="stylesheet" href="theme.css">
+
+    <script src="js/jquery-2.2.3.min.js"></script>
+    <script src="js/materialize.min.js"></script>
+    <script src="js/chart.min.js"></script> <!-- Local Chart.js -->
+    <script src="js/chartjs-plugin-datalabels.min.js"></script> <!-- Local datalabels plugin -->
+
+  </head>
+  <body>
+    <nav>
+      <div class="nav-wrapper">
+        <ul id="nav-mobile" class="left">
+          <li><a href="index.html" id="back" data-label="Back" aria-label="Back to scoreboard" title="Back to scoreboard"><i class="material-icons" aria-hidden="true">arrow_back</i></a></li>
+          <li><a href="#" id="toggle-view" data-label="Table" aria-label="Show score table" title="Show score table"><i class="material-icons" aria-hidden="true">list</i></a></li>
+          <li class="graph-only-btn"><a href="#" id="toggle-chips" data-label="Labels" aria-label="Toggle chart labels" title="Toggle chart labels"><i class="material-icons" aria-hidden="true">visibility</i></a></li>
+          <li class="graph-only-btn"><a href="#" id="share-graph" data-label="Share" aria-label="Share chart" title="Share chart"><i class="material-icons" aria-hidden="true">share</i></a></li>
+          <li><a href="sessions.html" id="sessions-link" data-label="Sessions" aria-label="Sessions" title="Sessions"><i class="material-icons" aria-hidden="true">group</i></a></li>
+        </ul>
+      </div>
+    </nav>
+    <div class="info-bar">
+      <span id="round-counter-display"></span>
+      <span class="divider">&middot;</span>
+      <span id="win-threshold-display"></span>
+    </div>
+    <div class="container">
+      <div class="row">
+        <!-- Table -->
+        <div class="hidden" id="table-container">
+          <div class="table-scroll">
+          <table id="round-scores" class="striped">
+            <thead>
+              <!-- Top row with merged columns -->
+              <tr>
+                <th></th>
+                <th colspan="3" id="team-a-header">Team A</th>
+                <th colspan="3" id="team-b-header">Team B</th>
+                <th class="dealer-col">Dealer</th>
+              </tr>
+              <!-- Second row with individual columns -->
+              <tr>
+                <th>#</th>
+                <th id="team-a-total-points-label">Total</th>
+                <th id="team-a-points-label">Round</th>
+                <th id="team-a-tichu-label">Tichu</th>
+                <th id="team-b-total-points-label">Total</th>
+                <th id="team-b-points-label">Round</th>
+                <th id="team-b-tichu-label">Tichu</th>
+                <th class="dealer-col">Dealer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Scores will be dynamically added here -->
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- Graph -->
+        <div class="landscape-graph" id="graph-container">
+          <div id="chart-wrapper">
+            <canvas id="scoreChart"></canvas> <!-- Canvas for the graph -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/players-storage.js"></script>
+    <script src="js/round-scores.js"></script>
+  </body>
+</html>

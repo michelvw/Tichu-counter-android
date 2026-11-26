@@ -1,0 +1,6 @@
+{
+  "name": "Tichu Counter",
+  "description": "Tabletop scorekeeper for Tichu with Quick Game, 4/5/6-player Sessions, cumulative charts, and player stats.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
