@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -154,7 +155,7 @@ fun ScoreboardScreen(
           TopBarLabeledAction(
             icon = Icons.Rounded.RestartAlt,
             label = "Reset",
-            enabled = !state.isFreshBoard,
+            enabled = !state.isFreshBoard && !state.isReadOnlyHostView,
             onClick = {
               if (state.isThreeTeamFinished) {
                 viewModel.confirmReset()
@@ -183,6 +184,10 @@ fun ScoreboardScreen(
 
       ScoreboardInfoBar(state = state)
 
+      AnimatedVisibility(visible = state.isReadOnlyHostView) {
+        ReadOnlyHostBanner()
+      }
+
       AnimatedVisibility(visible = state.showQuickGameHint) {
         QuickGameHintBanner(
           onGoToSessions = onOpenSessionsTab,
@@ -191,7 +196,10 @@ fun ScoreboardScreen(
       }
 
       AnimatedVisibility(visible = state.isSessionPaused) {
-        PausedSessionBanner(onResume = viewModel::resumePausedSession)
+        PausedSessionBanner(
+          showResumeAction = !state.isReadOnlyHostView,
+          onResume = viewModel::resumePausedSession,
+        )
       }
 
       AnimatedVisibility(visible = state.winBannerVisible && state.winBannerMessage != null) {
@@ -247,7 +255,8 @@ fun ScoreboardScreen(
               teamName = state.teamAName,
               subtitle = null,
               reserveSubtitleSpace = reserveSubtitleSlot,
-              editableName = !state.isSessionMode,
+              editableName = !state.isSessionMode && !state.isReadOnlyHostView,
+              enabled = !state.isReadOnlyHostView,
               onNameChange = { viewModel.updateQuickTeamName(true, it) },
               totalScore = state.teamAScore,
               previewDelta = state.previewDeltaA,
@@ -268,7 +277,8 @@ fun ScoreboardScreen(
               teamName = state.teamBName,
               subtitle = state.teamBSittingOutText,
               reserveSubtitleSpace = reserveSubtitleSlot,
-              editableName = !state.isSessionMode,
+              editableName = !state.isSessionMode && !state.isReadOnlyHostView,
+              enabled = !state.isReadOnlyHostView,
               onNameChange = { viewModel.updateQuickTeamName(false, it) },
               totalScore = state.teamBScore,
               previewDelta = state.previewDeltaB,
@@ -428,7 +438,44 @@ private fun QuickGameHintBanner(
 }
 
 @Composable
-private fun PausedSessionBanner(onResume: () -> Unit) {
+private fun ReadOnlyHostBanner() {
+  val colors = TichuTheme.colors
+  Surface(
+    color = colors.surface2,
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("readonly_host_banner"),
+  ) {
+    Column {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.Visibility,
+          contentDescription = null,
+          tint = colors.brand,
+          modifier = Modifier.size(18.dp),
+        )
+        Text(
+          text = "Live view — hosted by another player (read-only)",
+          style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+          color = colors.textMuted,
+        )
+      }
+      HorizontalDivider(color = colors.border)
+    }
+  }
+}
+
+@Composable
+private fun PausedSessionBanner(
+  showResumeAction: Boolean,
+  onResume: () -> Unit,
+) {
   val colors = TichuTheme.colors
   Surface(
     color = colors.teamASoft,
@@ -447,24 +494,30 @@ private fun PausedSessionBanner(onResume: () -> Unit) {
         tint = colors.teamA,
       )
       Text(
-        text = "Session paused. Resume to continue scoring.",
+        text = if (showResumeAction) {
+          "Session paused. Resume to continue scoring."
+        } else {
+          "Session paused by host."
+        },
         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
         color = colors.text,
         modifier = Modifier.weight(1f),
       )
-      Button(
-        onClick = onResume,
-        colors = ButtonDefaults.buttonColors(
-          containerColor = colors.brand,
-          contentColor = colors.onBrand,
-        ),
-        modifier = Modifier
-          .heightIn(min = 48.dp)
-          .testTag("resume_session_banner_button"),
-      ) {
-        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text("Resume")
+      if (showResumeAction) {
+        Button(
+          onClick = onResume,
+          colors = ButtonDefaults.buttonColors(
+            containerColor = colors.brand,
+            contentColor = colors.onBrand,
+          ),
+          modifier = Modifier
+            .heightIn(min = 48.dp)
+            .testTag("resume_session_banner_button"),
+        ) {
+          Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("Resume")
+        }
       }
     }
   }
@@ -679,6 +732,7 @@ private fun TeamScoringCard(
   subtitle: String?,
   reserveSubtitleSpace: Boolean,
   editableName: Boolean,
+  enabled: Boolean = true,
   onNameChange: (String) -> Unit,
   totalScore: Int,
   previewDelta: Int,
@@ -835,14 +889,14 @@ private fun TeamScoringCard(
               modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onMinus)
+                .clickable(enabled = enabled, onClick = onMinus)
                 .testTag("${sideTag}_minus_button"),
             ) {
               Box(contentAlignment = Alignment.Center) {
                 Icon(
                   imageVector = Icons.Rounded.Remove,
                   contentDescription = "Decrease points by 5",
-                  tint = colors.text,
+                  tint = if (enabled) colors.text else colors.textFaint,
                 )
               }
             }
@@ -850,7 +904,7 @@ private fun TeamScoringCard(
             Text(
               text = "$previewDelta",
               style = MonoTabularStyle.copy(fontSize = 18.sp),
-              color = colors.text,
+              color = if (enabled) colors.text else colors.textFaint,
               textAlign = TextAlign.Center,
               modifier = Modifier
                 .weight(1f)
@@ -864,14 +918,14 @@ private fun TeamScoringCard(
               modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onPlus)
+                .clickable(enabled = enabled, onClick = onPlus)
                 .testTag("${sideTag}_plus_button"),
             ) {
               Box(contentAlignment = Alignment.Center) {
                 Icon(
                   imageVector = Icons.Rounded.Add,
                   contentDescription = "Increase points by 5",
-                  tint = colors.text,
+                  tint = if (enabled) colors.text else colors.textFaint,
                 )
               }
             }
@@ -882,11 +936,13 @@ private fun TeamScoringCard(
         Box(modifier = Modifier.fillMaxWidth()) {
           OutlinedButton(
             onClick = { tichuMenuOpen = true },
+            enabled = enabled,
             shape = RoundedCornerShape(10.dp),
             border = BorderStroke(1.dp, colors.border),
             colors = ButtonDefaults.outlinedButtonColors(
               containerColor = colors.surface2,
               contentColor = colors.text,
+              disabledContentColor = colors.textFaint,
             ),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
             modifier = Modifier
@@ -904,12 +960,12 @@ private fun TeamScoringCard(
             Icon(
               imageVector = Icons.Rounded.ArrowDropDown,
               contentDescription = "Choose Tichu call",
-              tint = colors.textMuted,
+              tint = if (enabled) colors.textMuted else colors.textFaint,
             )
           }
 
           DropdownMenu(
-            expanded = tichuMenuOpen,
+            expanded = tichuMenuOpen && enabled,
             onDismissRequest = { tichuMenuOpen = false },
             containerColor = colors.surface,
           ) {
@@ -937,14 +993,15 @@ private fun TeamScoringCard(
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(10.dp))
-            .clickable { onToggleDoubleWin(!doubleWin) }
+            .clickable(enabled = enabled) { onToggleDoubleWin(!doubleWin) }
             .padding(horizontal = 4.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.Center,
         ) {
           Checkbox(
             checked = doubleWin,
-            onCheckedChange = onToggleDoubleWin,
+            onCheckedChange = if (enabled) onToggleDoubleWin else null,
+            enabled = enabled,
             colors = CheckboxDefaults.colors(
               checkedColor = colors.brand,
               checkmarkColor = colors.onBrand,
@@ -955,7 +1012,7 @@ private fun TeamScoringCard(
           Text(
             text = "Double win",
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-            color = colors.textMuted,
+            color = if (enabled) colors.textMuted else colors.textFaint,
           )
         }
       }

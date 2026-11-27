@@ -69,6 +69,21 @@ data class Player(
   val active: Boolean = true,
   val createdAt: Long,
   val statsResetAt: Long? = null,
+  val ownerUid: String = "",
+  val linkedUid: String? = null,
+  val linkedLabel: String? = null,
+)
+
+data class PlayerInvite(
+  val code: String,
+  val ownerUid: String,
+  val playerId: String,
+  val playerName: String,
+  val sessionIds: List<String> = emptyList(),
+  val gameIds: List<String> = emptyList(),
+  val status: String = "pending",
+  val expiresAtMs: Long = 0L,
+  val claimedByUid: String? = null,
 )
 
 data class PauseInterval(
@@ -84,6 +99,8 @@ data class Session(
   val pauseLog: List<PauseInterval> = emptyList(),
   val startedAt: Long,
   val endedAt: Long? = null,
+  val ownerUid: String = "",
+  val participantUids: List<String> = emptyList(),
 )
 
 sealed class Lineup {
@@ -147,6 +164,8 @@ data class Game(
   val startedAt: Long,
   val endedAt: Long? = null,
   val rounds: List<RoundRecord> = emptyList(),
+  val ownerUid: String = "",
+  val participantUids: List<String> = emptyList(),
 )
 
 data class TeamRoundInput(

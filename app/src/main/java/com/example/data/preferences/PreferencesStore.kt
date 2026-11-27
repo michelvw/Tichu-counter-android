@@ -43,6 +43,11 @@ class PreferencesStore(private val context: Context) {
     val QUICK_GAME_ID = stringPreferencesKey("quick_game_id")
     val QUICK_TEAM_A_NAME = stringPreferencesKey("quick_team_a_name")
     val QUICK_TEAM_B_NAME = stringPreferencesKey("quick_team_b_name")
+    val GUEST_MODE_ACTIVE = booleanPreferencesKey("guest_mode_active")
+  }
+
+  val guestModeFlow: Flow<Boolean> = context.tichuDataStore.data.map { prefs ->
+    prefs[Keys.GUEST_MODE_ACTIVE] ?: false
   }
 
   val preferencesFlow: Flow<AppPreferences> = context.tichuDataStore.data.map { prefs ->
@@ -61,6 +66,10 @@ class PreferencesStore(private val context: Context) {
   }
 
   suspend fun getSnapshot(): AppPreferences = preferencesFlow.first()
+
+  suspend fun setGuestModeActive(active: Boolean) {
+    context.tichuDataStore.edit { it[Keys.GUEST_MODE_ACTIVE] = active }
+  }
 
   suspend fun setThemeMode(mode: ThemeMode) {
     context.tichuDataStore.edit { it[Keys.THEME_MODE] = mode.key }

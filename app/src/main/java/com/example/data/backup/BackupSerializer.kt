@@ -14,7 +14,9 @@ import com.example.domain.RoundRecord
 import com.example.domain.Session
 import com.example.domain.SessionStatus
 import com.example.domain.ThemeMode
+import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Types
 
 @JsonClass(generateAdapter = true)
 data class BackupPreferencesJson(
@@ -101,6 +103,9 @@ data class DecodedBackup(
 
 object BackupSerializer {
   private val adapter = JsonCodec.moshi.adapter(TichuBackupJson::class.java).indent("  ")
+  private val rootMapAdapter: JsonAdapter<Map<String, Any?>> = JsonCodec.moshi.adapter(
+    Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java),
+  )
 
   fun encode(
     preferences: AppPreferences,
@@ -252,6 +257,33 @@ object BackupSerializer {
           },
         )
       },
+    )
+  }
+
+  fun decodeWithPreview(
+    json: String,
+    nowMs: Long = System.currentTimeMillis(),
+  ): BackupImportPreview {
+    val trimmed = json.trim()
+    val root = runCatching { rootMapAdapter.fromJson(trimmed) }.getOrNull()
+      ?: throw IllegalArgumentException("Could not parse JSON. Check that the file or pasted text is valid JSON.")
+    val isPwa = PwaMigrationImporter.looksLikePwaExport(root)
+    val decoded = if (isPwa) {
+      PwaMigrationImporter.decodeRootMap(root, nowMs)
+    } else {
+      require(root.containsKey("schemaVersion")) {
+        "Unrecognized JSON format. Select a Tichu Counter backup or a PWA localStorage export."
+      }
+      decode(trimmed)
+    }
+    val quickRoundsCount = decoded.games.firstOrNull { it.sessionId == null && it.mode == GameMode.QUICK }?.rounds?.size ?: 0
+    return BackupImportPreview(
+      decoded = decoded,
+      isPwaExport = isPwa,
+      playerCount = decoded.players.size,
+      sessionCount = decoded.sessions.size,
+      gameCount = decoded.games.size,
+      quickRoundsCount = quickRoundsCount,
     )
   }
 }

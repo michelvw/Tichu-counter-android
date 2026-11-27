@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -25,10 +26,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.PersonOutline
+import androidx.compose.material.icons.rounded.SyncAlt
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -54,9 +61,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.auth.GoogleAuthHelper
+import com.example.data.backup.BackupImportPreview
 import com.example.domain.ThemeMode
 import com.example.ui.components.ConfirmActionDialog
+import com.example.ui.components.PwaMigrationDialog
 import com.example.ui.components.TichuTopBar
 import com.example.ui.theme.TichuTheme
 import com.example.ui.viewmodel.SettingsViewModel
@@ -69,11 +80,13 @@ import kotlinx.coroutines.withContext
 fun SettingsScreen(
   viewModel: SettingsViewModel,
   onBack: () -> Unit,
+  onSignOut: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val colors = TichuTheme.colors
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
+  val credentialManager = remember(context) { CredentialManager.create(context) }
 
   val presets = remember { listOf(300, 500, 750, 1000) }
   var isCustomSelected by remember { mutableStateOf(state.winThreshold !in presets) }
@@ -82,7 +95,11 @@ fun SettingsScreen(
     mutableStateOf(if (state.winThreshold !in presets) state.winThreshold.toString() else "")
   }
   var pendingConfirmThreshold by remember { mutableStateOf<Int?>(null) }
-  var pendingImportJson by remember { mutableStateOf<String?>(null) }
+  var pendingImportPreview by remember { mutableStateOf<BackupImportPreview?>(null) }
+  var showPwaMigrationDialog by remember { mutableStateOf(false) }
+  var pwaInlineError by remember { mutableStateOf<String?>(null) }
+  var showSignOutDialog by remember { mutableStateOf(false) }
+  var isSigningIn by remember { mutableStateOf(false) }
 
   LaunchedEffect(state.winThreshold) {
     if (state.winThreshold in presets) {
@@ -127,9 +144,27 @@ fun SettingsScreen(
           } ?: error("Could not read selected file.")
         }
       }.onSuccess { content ->
-        pendingImportJson = content
+        viewModel.parseImportPreview(content)
+          .onSuccess { preview ->
+            pwaInlineError = null
+            showPwaMigrationDialog = false
+            pendingImportPreview = preview
+          }
+          .onFailure { err ->
+            val msg = err.message ?: "Invalid backup or PWA export JSON."
+            if (showPwaMigrationDialog) {
+              pwaInlineError = msg
+            } else {
+              viewModel.showFeedback(msg, isError = true)
+            }
+          }
       }.onFailure { err ->
-        viewModel.showFeedback(err.message ?: "Could not read backup file.", isError = true)
+        val msg = err.message ?: "Could not read backup file."
+        if (showPwaMigrationDialog) {
+          pwaInlineError = msg
+        } else {
+          viewModel.showFeedback(msg, isError = true)
+        }
       }
     }
   }
@@ -148,18 +183,55 @@ fun SettingsScreen(
     )
   }
 
-  if (pendingImportJson != null) {
+  if (showPwaMigrationDialog) {
+    PwaMigrationDialog(
+      inlineError = pwaInlineError,
+      onClearError = { pwaInlineError = null },
+      onPickJsonFile = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+      onSubmitJson = { jsonText ->
+        viewModel.parseImportPreview(jsonText)
+          .onSuccess { preview ->
+            pwaInlineError = null
+            showPwaMigrationDialog = false
+            pendingImportPreview = preview
+          }
+          .onFailure { err ->
+            pwaInlineError = err.message ?: "Invalid PWA export JSON."
+          }
+      },
+      onDismiss = {
+        pwaInlineError = null
+        showPwaMigrationDialog = false
+      },
+    )
+  }
+
+  if (pendingImportPreview != null) {
+    val preview = pendingImportPreview!!
     ConfirmActionDialog(
-      title = "Restore backup?",
-      message = "Importing a JSON backup replaces all current players, sessions, games, rounds, and settings.",
-      confirmLabel = "Restore",
+      title = if (preview.isPwaExport) "Import from PWA?" else "Restore backup?",
+      message = "${preview.summaryLine()} Importing replaces all current players, sessions, games, rounds, and settings.",
+      confirmLabel = if (preview.isPwaExport) "Import" else "Restore",
       isDanger = true,
       onConfirm = {
-        val json = pendingImportJson!!
-        pendingImportJson = null
-        viewModel.importBackupJson(json)
+        pendingImportPreview = null
+        viewModel.confirmImport(preview)
       },
-      onDismiss = { pendingImportJson = null },
+      onDismiss = { pendingImportPreview = null },
+    )
+  }
+
+  if (showSignOutDialog) {
+    ConfirmActionDialog(
+      title = "Sign out?",
+      message = "Sign out of your Google account? Your cloud data stays backed up and will sync again when you sign back in.",
+      confirmLabel = "Sign out",
+      isDanger = true,
+      onConfirm = {
+        showSignOutDialog = false
+        onSignOut()
+      },
+      onDismiss = { showSignOutDialog = false },
     )
   }
 
@@ -182,6 +254,148 @@ fun SettingsScreen(
         modifier = Modifier.widthIn(max = 600.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
+        // Account section
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = colors.surface,
+          border = BorderStroke(1.dp, colors.border),
+        ) {
+          Column(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            Text(
+              text = "Account",
+              style = MaterialTheme.typography.titleMedium,
+              color = colors.text,
+            )
+            if (state.isGuestMode) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                  Icon(
+                    imageVector = Icons.Rounded.PersonOutline,
+                    contentDescription = null,
+                    tint = colors.brand,
+                  )
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = "Guest mode",
+                      style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                      color = colors.text,
+                      modifier = Modifier.testTag("account_display_name"),
+                    )
+                    Text(
+                      text = "Saved on this device only",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = colors.textMuted,
+                    )
+                  }
+                }
+                Text(
+                  text = "Sign in with Google anytime to back up your games, sync across devices, link players, and view shared live sessions.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = colors.textMuted,
+                )
+                Button(
+                  onClick = {
+                    if (isSigningIn) return@Button
+                    isSigningIn = true
+                    GoogleAuthHelper.onGoogleSignInClicked(
+                      context = context,
+                      credentialManager = credentialManager,
+                      onAuthSuccess = {
+                        isSigningIn = false
+                      },
+                      onAuthError = { msg ->
+                        isSigningIn = false
+                        viewModel.showFeedback(msg, isError = true)
+                      },
+                      scope = scope,
+                      onAuthCancelled = {
+                        isSigningIn = false
+                      },
+                    )
+                  },
+                  enabled = !isSigningIn,
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.brand,
+                    contentColor = colors.onBrand,
+                  ),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("guest_sign_in_button"),
+                ) {
+                  if (isSigningIn) {
+                    CircularProgressIndicator(
+                      color = colors.onBrand,
+                      strokeWidth = 2.dp,
+                      modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Signing in...", fontWeight = FontWeight.Bold)
+                  } else {
+                    Icon(Icons.Rounded.Login, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sign in with Google", fontWeight = FontWeight.Bold)
+                  }
+                }
+              } else {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                  Icon(
+                    imageVector = Icons.Rounded.AccountCircle,
+                    contentDescription = null,
+                    tint = colors.brand,
+                  )
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = state.userDisplayName,
+                      style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                      color = colors.text,
+                      modifier = Modifier.testTag("account_display_name"),
+                    )
+                    val email = state.userEmail
+                    if (!email.isNullOrBlank()) {
+                      Text(
+                        text = email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        modifier = Modifier.testTag("account_email"),
+                      )
+                    }
+                  }
+                }
+                Text(
+                  text = "Cloud sync active — sessions, stats, and player links stay backed up.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = colors.textMuted,
+                )
+                OutlinedButton(
+                  onClick = { showSignOutDialog = true },
+                  border = BorderStroke(1.dp, colors.danger.copy(alpha = 0.55f)),
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("sign_out_button"),
+                ) {
+                  Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("Sign out", fontWeight = FontWeight.SemiBold)
+                }
+              }
+          }
+        }
+
         // Appearance section
         Surface(
           shape = RoundedCornerShape(16.dp),
@@ -343,7 +557,7 @@ fun SettingsScreen(
               color = colors.text,
             )
             Text(
-              text = "Export players, sessions, games, rounds, and settings to a JSON file or restore from an existing backup.",
+              text = "Export players, sessions, games, rounds, and settings to a JSON file, restore a backup, or migrate data from the Tichu Counter PWA.",
               style = MaterialTheme.typography.bodyMedium,
               color = colors.textMuted,
             )
@@ -372,6 +586,22 @@ fun SettingsScreen(
               Icon(Icons.Rounded.Download, contentDescription = null)
               Spacer(modifier = Modifier.width(8.dp))
               Text("Import JSON backup", fontWeight = FontWeight.SemiBold)
+            }
+            OutlinedButton(
+              onClick = {
+                pwaInlineError = null
+                showPwaMigrationDialog = true
+              },
+              border = BorderStroke(1.dp, colors.brand.copy(alpha = 0.5f)),
+              colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.brand),
+              modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .testTag("migrate_pwa_button"),
+            ) {
+              Icon(Icons.Rounded.SyncAlt, contentDescription = null)
+              Spacer(modifier = Modifier.width(8.dp))
+              Text("Migrate from PWA", fontWeight = FontWeight.SemiBold)
             }
           }
         }

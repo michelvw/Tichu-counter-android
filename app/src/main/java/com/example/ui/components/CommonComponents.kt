@@ -230,6 +230,7 @@ fun RankingLeaderboardCard(
   onPlayerClick: (String) -> Unit,
   emptyText: String = "No players to rank yet.",
   testTagPrefix: String = "ranking",
+  badgeForPlayer: ((String) -> String?)? = null,
 ) {
   val colors = TichuTheme.colors
   var menuExpanded by remember { mutableStateOf(false) }
@@ -311,6 +312,7 @@ fun RankingLeaderboardCard(
       } else {
         Column {
           rankings.forEachIndexed { index, entry ->
+            val badgeText = badgeForPlayer?.invoke(entry.playerId)
             Row(
               modifier = Modifier
                 .fillMaxWidth()
@@ -334,14 +336,34 @@ fun RankingLeaderboardCard(
                 )
               }
               Spacer(modifier = Modifier.width(12.dp))
-              Text(
-                text = entry.playerName,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+              Row(
                 modifier = Modifier.weight(1f),
-              )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+              ) {
+                Text(
+                  text = entry.playerName,
+                  style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                  color = colors.text,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                  modifier = Modifier.weight(1f, fill = false),
+                )
+                if (!badgeText.isNullOrBlank()) {
+                  Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = colors.surface2,
+                    border = BorderStroke(1.dp, colors.border),
+                  ) {
+                    Text(
+                      text = badgeText,
+                      style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                      color = colors.textMuted,
+                      modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                  }
+                }
+              }
               Spacer(modifier = Modifier.width(8.dp))
               Text(
                 text = entry.formattedValue,

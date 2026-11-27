@@ -1,0 +1,387 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidUserSettings(data, userId) {
+      return data.uid == userId &&
+        data.displayName is string && data.displayName.size() <= 80 &&
+        data.themeMode in ['system', 'light', 'dark'] &&
+        data.winThreshold is int && data.winThreshold >= 1 && data.winThreshold <= 100000 &&
+        data.chipsVisible is bool &&
+        data.modeHintDismissed is bool &&
+        data.playersRankingSort is string && data.playersRankingSort.size() >= 1 && data.playersRankingSort.size() <= 40 &&
+        data.sessionRankingSort is string && data.sessionRankingSort.size() >= 1 && data.sessionRankingSort.size() <= 40 &&
+        data.quickTeamAName is string && data.quickTeamAName.size() >= 1 && data.quickTeamAName.size() <= 60 &&
+        data.quickTeamBName is string && data.quickTeamBName.size() >= 1 && data.quickTeamBName.size() <= 60 &&
+        (!('currentSessionGameId' in data) || (data.currentSessionGameId is string && isValidId(data.currentSessionGameId))) &&
+        (!('quickGameId' in data) || (data.quickGameId is string && isValidId(data.quickGameId))) &&
+        (!('localMigratedAt' in data) || (data.localMigratedAt is int && data.localMigratedAt >= 0)) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPlayer(data) {
+      return data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 2 &&
+        data.ownerUid in data.memberUids &&
+        (data.memberUids[0] is string) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+        data.active is bool &&
+        data.createdAtMs is int && data.createdAtMs >= 0 &&
+        (!('linkedUid' in data) || (data.linkedUid is string && isValidId(data.linkedUid) && data.linkedUid in data.memberUids)) &&
+        (!('linkedLabel' in data) || (data.linkedLabel is string && data.linkedLabel.size() <= 80)) &&
+        (!('statsResetAt' in data) || (data.statsResetAt is int && data.statsResetAt >= 0)) &&
+        (!('lastClaimCode' in data) || (data.lastClaimCode is string && isValidId(data.lastClaimCode))) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidClaimInviteForPlayer(code, playerId, ownerUid, claimerUid) {
+      let invBefore = get(/databases/$(database)/documents/playerInvites/$(code)).data;
+      let invAfter = getAfter(/databases/$(database)/documents/playerInvites/$(code)).data;
+      return invBefore.playerId == playerId &&
+        invBefore.ownerUid == ownerUid &&
+        invBefore.status == 'pending' &&
+        invBefore.expiresAtMs > request.time.toMillis() &&
+        invAfter.status == 'claimed' &&
+        invAfter.claimedByUid == claimerUid;
+    }
+
+    function isValidPlayerInvite(data) {
+      return data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.playerId is string && isValidId(data.playerId) &&
+        data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 60 &&
+        data.sessionIds is list && data.sessionIds.size() <= 500 &&
+        (data.sessionIds.size() == 0 || data.sessionIds[0] is string) &&
+        data.gameIds is list && data.gameIds.size() <= 1000 &&
+        (data.gameIds.size() == 0 || data.gameIds[0] is string) &&
+        data.status in ['pending', 'claimed', 'revoked'] &&
+        data.expiresAtMs is int && data.expiresAtMs > 0 &&
+        (!('claimedByUid' in data) || (data.claimedByUid is string && isValidId(data.claimedByUid))) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSession(data) {
+      return data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.participantUids is list && data.participantUids.size() >= 1 && data.participantUids.size() <= 10 &&
+        data.ownerUid in data.participantUids &&
+        data.status in ['active', 'paused', 'ended'] &&
+        data.playerIds is list && data.playerIds.size() >= 4 && data.playerIds.size() <= 6 &&
+        data.playerIds[0] is string &&
+        data.nextPoolStart is int && data.nextPoolStart >= 0 && data.nextPoolStart <= 2 &&
+        data.pauseLog is list && data.pauseLog.size() <= 500 &&
+        data.startedAtMs is int && data.startedAtMs >= 0 &&
+        (!('endedAtMs' in data) || (data.endedAtMs is int && data.endedAtMs >= 0)) &&
+        (!('lastLinkedPlayerId' in data) || (data.lastLinkedPlayerId is string && isValidId(data.lastLinkedPlayerId))) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidGame(data) {
+      return data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.participantUids is list && data.participantUids.size() >= 1 && data.participantUids.size() <= 10 &&
+        data.ownerUid in data.participantUids &&
+        (!('sessionId' in data) || (data.sessionId is string && isValidId(data.sessionId))) &&
+        data.mode in ['quick', 'fixed', 'rotation', 'threeTeams'] &&
+        data.playerIds is list && data.playerIds.size() <= 6 &&
+        (data.playerIds.size() == 0 || data.playerIds[0] is string) &&
+        data.team0 is list && data.team0.size() <= 2 &&
+        data.team1 is list && data.team1.size() <= 2 &&
+        data.team2 is list && data.team2.size() <= 2 &&
+        data.fixedTeam is list && data.fixedTeam.size() <= 2 &&
+        data.pool is list && data.pool.size() <= 3 &&
+        (!('firstRestingTeam' in data) || (data.firstRestingTeam is int && data.firstRestingTeam >= 0 && data.firstRestingTeam <= 2)) &&
+        data.winThreshold is int && data.winThreshold >= 1 && data.winThreshold <= 100000 &&
+        data.teamAName is string && data.teamAName.size() >= 1 && data.teamAName.size() <= 60 &&
+        data.teamBName is string && data.teamBName.size() >= 1 && data.teamBName.size() <= 60 &&
+        (!('winner' in data) || (data.winner is string && data.winner in ['A', 'B', 'C', 'tie'])) &&
+        data.pendingNextGame is bool &&
+        (!('finalScores' in data) || (data.finalScores is map && data.finalScores.teamA is int && data.finalScores.teamB is int && (!('teamC' in data.finalScores) || data.finalScores.teamC is int))) &&
+        (!('nextDealerPlayerId' in data) || (data.nextDealerPlayerId is string && isValidId(data.nextDealerPlayerId))) &&
+        data.startedAtMs is int && data.startedAtMs >= 0 &&
+        (!('endedAtMs' in data) || (data.endedAtMs is int && data.endedAtMs >= 0)) &&
+        data.rounds is list && data.rounds.size() <= 500 &&
+        (!('lastLinkedPlayerId' in data) || (data.lastLinkedPlayerId is string && isValidId(data.lastLinkedPlayerId))) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        incoming().keys().hasAll([
+          'uid', 'displayName', 'themeMode', 'winThreshold', 'chipsVisible',
+          'modeHintDismissed', 'playersRankingSort', 'sessionRankingSort',
+          'quickTeamAName', 'quickTeamBName', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'uid', 'displayName', 'themeMode', 'winThreshold', 'chipsVisible',
+          'modeHintDismissed', 'playersRankingSort', 'sessionRankingSort',
+          'quickTeamAName', 'quickTeamBName', 'currentSessionGameId',
+          'quickGameId', 'localMigratedAt', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidUserSettings(incoming(), userId);
+
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        isValidUserSettings(incoming(), userId) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'themeMode', 'winThreshold', 'chipsVisible',
+          'modeHintDismissed', 'playersRankingSort', 'sessionRankingSort',
+          'quickTeamAName', 'quickTeamBName', 'currentSessionGameId',
+          'quickGameId', 'localMigratedAt', 'updatedAt'
+        ]);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    match /players/{playerId} {
+      allow get: if isSignedIn() && isValidId(playerId) && (request.auth.uid in existing().memberUids);
+      allow list: if isSignedIn() && (request.auth.uid in existing().memberUids);
+
+      allow create: if isSignedIn() &&
+        isValidId(playerId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().keys().hasAll(['ownerUid', 'memberUids', 'name', 'active', 'createdAtMs', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly([
+          'ownerUid', 'memberUids', 'name', 'active', 'createdAtMs',
+          'linkedUid', 'linkedLabel', 'statsResetAt', 'lastClaimCode',
+          'createdAt', 'updatedAt'
+        ]) &&
+        (!('linkedUid' in incoming()) || incoming().linkedUid == request.auth.uid) &&
+        isValidPlayer(incoming());
+
+      allow update: if isSignedIn() &&
+        isValidId(playerId) &&
+        isValidPlayer(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().createdAtMs == existing().createdAtMs && (
+          // Action 1: Owner updates roster info, archive status, stats reset, or unlinks/self-links
+          (
+            existing().ownerUid == request.auth.uid &&
+            (!('linkedUid' in incoming()) || incoming().linkedUid == existing().get('linkedUid', null) || incoming().linkedUid == request.auth.uid) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'active', 'statsResetAt', 'linkedUid', 'linkedLabel', 'memberUids', 'updatedAt'
+            ])
+          ) ||
+          // Action 2: Linked user unlinks themselves
+          (
+            ('linkedUid' in existing()) &&
+            existing().linkedUid == request.auth.uid &&
+            !('linkedUid' in incoming()) &&
+            !('linkedLabel' in incoming()) &&
+            incoming().memberUids.size() == 1 &&
+            incoming().ownerUid in incoming().memberUids &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'linkedUid', 'linkedLabel', 'memberUids', 'updatedAt'
+            ])
+          ) ||
+          // Action 3: Authenticated user claims an unlinked guest player via valid invite
+          (
+            !('linkedUid' in existing()) &&
+            ('linkedUid' in incoming()) &&
+            incoming().linkedUid == request.auth.uid &&
+            incoming().ownerUid in incoming().memberUids &&
+            request.auth.uid in incoming().memberUids &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'linkedUid', 'linkedLabel', 'memberUids', 'lastClaimCode', 'updatedAt'
+            ]) &&
+            ('lastClaimCode' in incoming()) &&
+            isValidClaimInviteForPlayer(incoming().lastClaimCode, playerId, existing().ownerUid, request.auth.uid)
+          )
+        );
+
+      allow delete: if isSignedIn() && isValidId(playerId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /playerInvites/{inviteCode} {
+      allow get: if isSignedIn() &&
+        isValidId(inviteCode) &&
+        (
+          existing().ownerUid == request.auth.uid ||
+          existing().status == 'pending' ||
+          (('claimedByUid' in existing()) && existing().claimedByUid == request.auth.uid)
+        );
+
+      allow list: if isSignedIn() && existing().ownerUid == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+        isValidId(inviteCode) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        !('claimedByUid' in incoming()) &&
+        incoming().keys().hasAll([
+          'ownerUid', 'playerId', 'playerName', 'sessionIds', 'gameIds',
+          'status', 'expiresAtMs', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerUid', 'playerId', 'playerName', 'sessionIds', 'gameIds',
+          'status', 'expiresAtMs', 'claimedByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidPlayerInvite(incoming()) &&
+        exists(/databases/$(database)/documents/players/$(incoming().playerId)) &&
+        get(/databases/$(database)/documents/players/$(incoming().playerId)).data.ownerUid == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+        isValidId(inviteCode) &&
+        isValidPlayerInvite(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().playerId == existing().playerId &&
+        incoming().createdAt == existing().createdAt &&
+        existing().status == 'pending' && (
+          // Action 1: Host revokes pending invite
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().status == 'revoked' &&
+            !('claimedByUid' in incoming()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          // Action 2: Friend claims invite atomically with player update
+          (
+            incoming().status == 'claimed' &&
+            ('claimedByUid' in incoming()) &&
+            incoming().claimedByUid == request.auth.uid &&
+            existing().expiresAtMs > request.time.toMillis() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedByUid', 'updatedAt']) &&
+            getAfter(/databases/$(database)/documents/players/$(existing().playerId)).data.linkedUid == request.auth.uid
+          )
+        );
+
+      allow delete: if isSignedIn() && isValidId(inviteCode) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && (request.auth.uid in existing().participantUids);
+      allow list: if isSignedIn() && (request.auth.uid in existing().participantUids);
+
+      allow create: if isSignedIn() &&
+        isValidId(sessionId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().keys().hasAll([
+          'ownerUid', 'participantUids', 'status', 'playerIds',
+          'nextPoolStart', 'pauseLog', 'startedAtMs', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerUid', 'participantUids', 'status', 'playerIds',
+          'nextPoolStart', 'pauseLog', 'startedAtMs', 'endedAtMs',
+          'lastLinkedPlayerId', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidSession(incoming());
+
+      allow update: if isSignedIn() &&
+        isValidId(sessionId) &&
+        isValidSession(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().startedAtMs == existing().startedAtMs && (
+          // Action 1: Host updates session state
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'playerIds', 'nextPoolStart', 'pauseLog', 'endedAtMs', 'participantUids', 'updatedAt'
+            ])
+          ) ||
+          // Action 2: Newly linked participant adds their own UID to participantUids
+          (
+            ('lastLinkedPlayerId' in incoming()) &&
+            incoming().lastLinkedPlayerId in existing().playerIds &&
+            getAfter(/databases/$(database)/documents/players/$(incoming().lastLinkedPlayerId)).data.linkedUid == request.auth.uid &&
+            incoming().participantUids.hasAll(existing().participantUids) &&
+            request.auth.uid in incoming().participantUids &&
+            incoming().participantUids.size() <= existing().participantUids.size() + 1 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'participantUids', 'lastLinkedPlayerId', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isSignedIn() && isValidId(sessionId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /games/{gameId} {
+      allow get: if isSignedIn() && isValidId(gameId) && (request.auth.uid in existing().participantUids);
+      allow list: if isSignedIn() && (request.auth.uid in existing().participantUids);
+
+      allow create: if isSignedIn() &&
+        isValidId(gameId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().keys().hasAll([
+          'ownerUid', 'participantUids', 'mode', 'playerIds',
+          'team0', 'team1', 'team2', 'fixedTeam', 'pool',
+          'winThreshold', 'teamAName', 'teamBName', 'pendingNextGame',
+          'startedAtMs', 'rounds', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerUid', 'participantUids', 'sessionId', 'mode', 'playerIds',
+          'team0', 'team1', 'team2', 'fixedTeam', 'pool',
+          'firstRestingTeam', 'winThreshold', 'teamAName', 'teamBName',
+          'winner', 'pendingNextGame', 'finalScores', 'nextDealerPlayerId',
+          'startedAtMs', 'endedAtMs', 'rounds', 'lastLinkedPlayerId',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidGame(incoming());
+
+      allow update: if isSignedIn() &&
+        isValidId(gameId) &&
+        isValidGame(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().startedAtMs == existing().startedAtMs && (
+          // Action 1: Host updates game rounds, scores, threshold, winner, dealer
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'participantUids', 'winThreshold', 'teamAName', 'teamBName',
+              'winner', 'pendingNextGame', 'finalScores', 'nextDealerPlayerId',
+              'endedAtMs', 'rounds', 'updatedAt'
+            ])
+          ) ||
+          // Action 2: Newly linked participant adds their own UID to participantUids
+          (
+            ('lastLinkedPlayerId' in incoming()) &&
+            incoming().lastLinkedPlayerId in existing().playerIds &&
+            getAfter(/databases/$(database)/documents/players/$(incoming().lastLinkedPlayerId)).data.linkedUid == request.auth.uid &&
+            incoming().participantUids.hasAll(existing().participantUids) &&
+            request.auth.uid in incoming().participantUids &&
+            incoming().participantUids.size() <= existing().participantUids.size() + 1 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'participantUids', 'lastLinkedPlayerId', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isSignedIn() && isValidId(gameId) && existing().ownerUid == request.auth.uid;
+    }
+  }
+}

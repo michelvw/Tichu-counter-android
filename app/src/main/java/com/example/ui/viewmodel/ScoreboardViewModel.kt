@@ -46,6 +46,7 @@ data class ScoreboardUiState(
   val isLoading: Boolean = true,
   val isSessionMode: Boolean = false,
   val isSessionPaused: Boolean = false,
+  val isReadOnlyHostView: Boolean = false,
   val sessionId: String? = null,
   val gameId: String? = null,
   val gameMode: GameMode = GameMode.QUICK,
@@ -93,7 +94,7 @@ class ScoreboardViewModel(
 
   init {
     viewModelScope.launch {
-      repository.ensureQuickGame()
+      runCatching { repository.ensureQuickGame() }
     }
   }
 
@@ -135,7 +136,7 @@ class ScoreboardViewModel(
     val sessionGame = bundle.sessionGame
     val isSessionMode = sessionGame != null
     val activeGame = sessionGame ?: bundle.quickGame
-    val winThreshold = prefs.winThreshold
+    val winThreshold = if (isSessionMode) activeGame?.winThreshold ?: prefs.winThreshold else prefs.winThreshold
     val playersById = bundle.players.associateBy { it.id }
 
     fun playerName(id: String): String = playersById[id]?.name ?: "?"
@@ -156,6 +157,8 @@ class ScoreboardViewModel(
       )
     }
 
+    val isReadOnlyHostView = activeGame.ownerUid.isNotBlank() &&
+      activeGame.ownerUid != repository.currentUserId
     val isSessionPaused = isSessionMode && bundle.activeSession?.status == SessionStatus.PAUSED
     val isThreeTeam = activeGame.mode == GameMode.THREE_TEAMS
     val isThreeTeamFinished = isThreeTeam && activeGame.winner != null
@@ -207,6 +210,7 @@ class ScoreboardViewModel(
         isLoading = false,
         isSessionMode = true,
         isSessionPaused = isSessionPaused,
+        isReadOnlyHostView = isReadOnlyHostView,
         sessionId = activeGame.sessionId,
         gameId = activeGame.id,
         gameMode = activeGame.mode,
@@ -225,15 +229,15 @@ class ScoreboardViewModel(
         showQuickGameHint = false,
         winBannerVisible = isThreeTeamFinished,
         winBannerMessage = winnerBannerText,
-        showWinBannerFinishAction = true,
-        showWinBannerCloseAction = false,
+        showWinBannerFinishAction = !isReadOnlyHostView,
+        showWinBannerCloseAction = isReadOnlyHostView,
         draft = local.draft,
         previewDeltaA = deltaA,
         previewDeltaB = deltaB,
-        canUndo = undoForGame.isNotEmpty() || activeGame.rounds.isNotEmpty(),
-        canReset = activeGame.rounds.isNotEmpty() && !isThreeTeamFinished,
+        canUndo = !isReadOnlyHostView && (undoForGame.isNotEmpty() || activeGame.rounds.isNotEmpty()),
+        canReset = !isReadOnlyHostView && activeGame.rounds.isNotEmpty() && !isThreeTeamFinished,
         isFreshBoard = false,
-        nextRoundEnabled = !isSessionPaused && !isThreeTeamFinished && !local.isSubmitting,
+        nextRoundEnabled = !isReadOnlyHostView && !isSessionPaused && !isThreeTeamFinished && !local.isSubmitting,
         toastMessage = local.toastMessage,
       )
     }
@@ -281,6 +285,7 @@ class ScoreboardViewModel(
       isLoading = false,
       isSessionMode = isSessionMode,
       isSessionPaused = isSessionPaused,
+      isReadOnlyHostView = isReadOnlyHostView,
       sessionId = activeGame.sessionId,
       gameId = activeGame.id,
       gameMode = activeGame.mode,
@@ -300,32 +305,35 @@ class ScoreboardViewModel(
       showQuickGameHint = showHint,
       winBannerVisible = bannerMsg != null,
       winBannerMessage = bannerMsg,
-      showWinBannerFinishAction = isSessionMode,
+      showWinBannerFinishAction = isSessionMode && !isReadOnlyHostView,
       showWinBannerCloseAction = true,
       draft = local.draft,
       previewDeltaA = deltaA,
       previewDeltaB = deltaB,
-      canUndo = undoForGame.isNotEmpty() || activeGame.rounds.isNotEmpty(),
-      canReset = !isFreshBoard,
+      canUndo = !isReadOnlyHostView && (undoForGame.isNotEmpty() || activeGame.rounds.isNotEmpty()),
+      canReset = !isReadOnlyHostView && !isFreshBoard,
       isFreshBoard = isFreshBoard,
-      nextRoundEnabled = !isSessionPaused && !local.isSubmitting,
+      nextRoundEnabled = !isReadOnlyHostView && !isSessionPaused && !local.isSubmitting,
       toastMessage = local.toastMessage,
     )
   }
 
   fun adjustPoints(isTeamA: Boolean, deltaSteps: Int) {
+    if (uiState.value.isReadOnlyHostView) return
     localState.update { state ->
       state.copy(draft = ScoringEngine.adjustCardPoints(state.draft, isTeamA, deltaSteps))
     }
   }
 
   fun selectTichuCall(isTeamA: Boolean, call: TichuCall) {
+    if (uiState.value.isReadOnlyHostView) return
     localState.update { state ->
       state.copy(draft = ScoringEngine.setTichuCall(state.draft, isTeamA, call))
     }
   }
 
   fun toggleDoubleWin(isTeamA: Boolean, checked: Boolean) {
+    if (uiState.value.isReadOnlyHostView) return
     localState.update { state ->
       state.copy(draft = ScoringEngine.toggleDoubleWin(state.draft, isTeamA, checked))
     }
@@ -333,7 +341,7 @@ class ScoreboardViewModel(
 
   fun updateQuickTeamName(isTeamA: Boolean, name: String) {
     viewModelScope.launch {
-      repository.updateQuickTeamName(isTeamA, name)
+      runCatching { repository.updateQuickTeamName(isTeamA, name) }
     }
   }
 
@@ -377,30 +385,35 @@ class ScoreboardViewModel(
   fun undo() {
     val state = uiState.value
     val gameId = state.gameId ?: return
+    if (state.isReadOnlyHostView) return
     val gameSnapshots = localState.value.undoHistory.filter { it.gameId == gameId }
     val latest = gameSnapshots.lastOrNull()
 
     viewModelScope.launch {
-      if (latest != null && latest.isReset) {
-        repository.restoreGameSnapshot(gameId, latest.roundsBeforeReset, latest.dealerBeforeReset)
-        localState.update { cur ->
-          cur.copy(
-            draft = latest.draft,
-            undoHistory = cur.undoHistory.dropLast(1),
-            winBannerDismissed = false,
-            toastMessage = "Reset undone - previous game restored",
-          )
+      runCatching {
+        if (latest != null && latest.isReset) {
+          repository.restoreGameSnapshot(gameId, latest.roundsBeforeReset, latest.dealerBeforeReset)
+          localState.update { cur ->
+            cur.copy(
+              draft = latest.draft,
+              undoHistory = cur.undoHistory.dropLast(1),
+              winBannerDismissed = false,
+              toastMessage = "Reset undone - previous game restored",
+            )
+          }
+        } else if (latest != null || state.roundNumber > 1) {
+          repository.undoLastRound(gameId)
+          localState.update { cur ->
+            cur.copy(
+              draft = latest?.draft ?: ScoreboardDraft(),
+              undoHistory = if (latest != null) cur.undoHistory.dropLast(1) else cur.undoHistory,
+              winBannerDismissed = false,
+              toastMessage = "Last round undone",
+            )
+          }
         }
-      } else if (latest != null || state.roundNumber > 1) {
-        repository.undoLastRound(gameId)
-        localState.update { cur ->
-          cur.copy(
-            draft = latest?.draft ?: ScoreboardDraft(),
-            undoHistory = if (latest != null) cur.undoHistory.dropLast(1) else cur.undoHistory,
-            winBannerDismissed = false,
-            toastMessage = "Last round undone",
-          )
-        }
+      }.onFailure { err ->
+        localState.update { it.copy(toastMessage = err.message ?: "Could not undo.") }
       }
     }
   }
@@ -408,29 +421,34 @@ class ScoreboardViewModel(
   fun confirmReset() {
     val state = uiState.value
     val gameId = state.gameId ?: return
+    if (state.isReadOnlyHostView) return
     if (state.isThreeTeamFinished) {
       localState.update { it.copy(toastMessage = "Undo the winning round before resetting this game.") }
       return
     }
     viewModelScope.launch {
-      val allGames = firstOrNullSafe(repository.gamesFlow).orEmpty()
-      val game = allGames.firstOrNull { it.id == gameId }
-      val rounds = game?.rounds.orEmpty()
-      val snapshot = ScoreboardSnapshot(
-        gameId = gameId,
-        draft = localState.value.draft,
-        isReset = true,
-        roundsBeforeReset = rounds,
-        dealerBeforeReset = game?.nextDealerPlayerId,
-      )
-      repository.resetGameRounds(gameId, rounds.firstOrNull()?.dealerPlayerId)
-      localState.update { cur ->
-        cur.copy(
-          draft = ScoreboardDraft(),
-          undoHistory = if (state.isFreshBoard) emptyList() else cur.undoHistory.filter { it.gameId == gameId } + snapshot,
-          winBannerDismissed = false,
-          toastMessage = if (state.isFreshBoard) null else "Game reset - use Undo to restore it",
+      runCatching {
+        val allGames = firstOrNullSafe(repository.gamesFlow).orEmpty()
+        val game = allGames.firstOrNull { it.id == gameId }
+        val rounds = game?.rounds.orEmpty()
+        val snapshot = ScoreboardSnapshot(
+          gameId = gameId,
+          draft = localState.value.draft,
+          isReset = true,
+          roundsBeforeReset = rounds,
+          dealerBeforeReset = game?.nextDealerPlayerId,
         )
+        repository.resetGameRounds(gameId, rounds.firstOrNull()?.dealerPlayerId)
+        localState.update { cur ->
+          cur.copy(
+            draft = ScoreboardDraft(),
+            undoHistory = if (state.isFreshBoard) emptyList() else cur.undoHistory.filter { it.gameId == gameId } + snapshot,
+            winBannerDismissed = false,
+            toastMessage = if (state.isFreshBoard) null else "Game reset - use Undo to restore it",
+          )
+        }
+      }.onFailure { err ->
+        localState.update { it.copy(toastMessage = err.message ?: "Could not reset game.") }
       }
     }
   }
@@ -439,40 +457,47 @@ class ScoreboardViewModel(
     val state = uiState.value
     val gameId = state.gameId ?: return
     val sessionId = state.sessionId ?: return
-    if (!state.isSessionMode) return
+    if (!state.isSessionMode || state.isReadOnlyHostView) return
 
     viewModelScope.launch {
-      if (!state.isThreeTeamMode) {
-        val winner = when {
-          state.teamAScore == state.teamBScore -> "tie"
-          state.teamAScore > state.teamBScore -> "A"
-          else -> "B"
+      runCatching {
+        if (!state.isThreeTeamMode) {
+          val winner = when {
+            state.teamAScore == state.teamBScore -> "tie"
+            state.teamAScore > state.teamBScore -> "A"
+            else -> "B"
+          }
+          repository.finishSessionGame(
+            gameId = gameId,
+            winner = winner,
+            finalScores = com.example.domain.FinalScores(state.teamAScore, state.teamBScore),
+          )
+        } else if (!state.isThreeTeamFinished) {
+          return@launch
         }
-        repository.finishSessionGame(
-          gameId = gameId,
-          winner = winner,
-          finalScores = com.example.domain.FinalScores(state.teamAScore, state.teamBScore),
-        )
-      } else if (!state.isThreeTeamFinished) {
-        return@launch
-      }
 
-      val session = firstOrNullSafe(repository.activeOrPausedSessionFlow)
-      if (session != null && session.id == sessionId && session.status == SessionStatus.ACTIVE) {
-        repository.startNewGameInSession(sessionId, null)
-        localState.update {
-          LocalScoreboardState(toastMessage = "Game finished — next game started")
+        val session = firstOrNullSafe(repository.activeOrPausedSessionFlow)
+        if (session != null && session.id == sessionId && session.status == SessionStatus.ACTIVE) {
+          repository.startNewGameInSession(sessionId, null)
+          localState.update {
+            LocalScoreboardState(toastMessage = "Game finished — next game started")
+          }
+        } else {
+          localState.update { it.copy(toastMessage = "Session is paused or ended.") }
         }
-      } else {
-        localState.update { it.copy(toastMessage = "Session is paused or ended.") }
+      }.onFailure { err ->
+        localState.update { it.copy(toastMessage = err.message ?: "Could not advance game.") }
       }
     }
   }
 
   fun resumePausedSession() {
-    val sessionId = uiState.value.sessionId ?: return
+    val state = uiState.value
+    val sessionId = state.sessionId ?: return
+    if (state.isReadOnlyHostView) return
     viewModelScope.launch {
-      repository.resumeSession(sessionId)
+      runCatching { repository.resumeSession(sessionId) }
+        .onFailure { err -> localState.update { it.copy(toastMessage = err.message) } }
     }
   }
 
@@ -482,7 +507,7 @@ class ScoreboardViewModel(
 
   fun dismissModeHint() {
     viewModelScope.launch {
-      repository.dismissModeHint()
+      runCatching { repository.dismissModeHint() }
     }
   }
 

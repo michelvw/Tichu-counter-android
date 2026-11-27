@@ -37,6 +37,7 @@ data class SessionGameRowItem(
 data class SessionDetailUiModel(
   val sessionId: String,
   val status: SessionStatus,
+  val isOwnedByCurrentUser: Boolean,
   val startedAt: Long,
   val playerNamesLine: String,
   val gamesPlayedCount: Int,
@@ -48,9 +49,11 @@ data class SessionDetailUiModel(
 
 data class SessionsUiState(
   val isLoading: Boolean = true,
+  val currentUserId: String = "",
   val activePlayers: List<Player> = emptyList(),
   val selectedPlayerIds: Set<String> = emptySet(),
   val activeSession: Session? = null,
+  val isActiveSessionHost: Boolean = true,
   val currentSessionGame: Game? = null,
   val currentGameSummary: String? = null,
   val previewLineup: Lineup? = null,
@@ -92,10 +95,19 @@ class SessionsViewModel(
     repository.playersFlow,
     repository.sessionsFlow,
     repository.gamesFlow,
+    repository.activeOrPausedSessionFlow,
     repository.currentSessionGameFlow,
     repository.preferencesFlow,
-  ) { players, sessions, games, currentGame, prefs ->
-    RepoBundle(players, sessions, games, currentGame, prefs)
+  ) { args ->
+    @Suppress("UNCHECKED_CAST")
+    RepoBundle(
+      players = args[0] as List<Player>,
+      sessions = args[1] as List<Session>,
+      games = args[2] as List<Game>,
+      activeSession = args[3] as Session?,
+      currentGame = args[4] as Game?,
+      prefs = args[5] as AppPreferences,
+    )
   }
 
   val uiState: StateFlow<SessionsUiState> = combine(
@@ -107,13 +119,14 @@ class SessionsViewModel(
   }.stateIn(
     scope = viewModelScope,
     started = SharingStarted.WhileSubscribed(5000),
-    initialValue = SessionsUiState(),
+    initialValue = SessionsUiState(currentUserId = repository.currentUserId),
   )
 
   private data class RepoBundle(
     val players: List<Player>,
     val sessions: List<Session>,
     val games: List<Game>,
+    val activeSession: Session?,
     val currentGame: Game?,
     val prefs: AppPreferences,
   )
@@ -123,11 +136,11 @@ class SessionsViewModel(
     local: LocalSessionsUiState,
     nowMs: Long,
   ): SessionsUiState {
+    val uid = repository.currentUserId
     val playersById = bundle.players.associateBy { it.id }
-    val activePlayers = bundle.players.filter { it.active }
-    val activeSession = bundle.sessions.firstOrNull {
-      it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED
-    }
+    val activePlayers = bundle.players.filter { it.active && (it.ownerUid.isBlank() || it.ownerUid == uid) }
+    val activeSession = bundle.activeSession
+    val isActiveHost = activeSession == null || activeSession.ownerUid.isBlank() || activeSession.ownerUid == uid
 
     fun playerName(id: String): String = playersById[id]?.name ?: "(removed player)"
 
@@ -140,6 +153,7 @@ class SessionsViewModel(
     fun buildSessionDetail(session: Session): SessionDetailUiModel {
       val sGames = bundle.games.filter { it.sessionId == session.id }
       val stats = StatsCalculator.computeSessionStats(session, sGames, playersById, nowMs)
+      val isHost = session.ownerUid.isBlank() || session.ownerUid == uid
       val ranked = StatsCalculator.rankPlayers(
         playersWithStats = session.playerIds.map { pid ->
           val p = playersById[pid] ?: Player(id = pid, name = "(removed player)", createdAt = 0L)
@@ -179,13 +193,14 @@ class SessionsViewModel(
           gameNumber = idx + 1,
           summaryText = label,
           canViewRounds = g.winner != null && g.rounds.isNotEmpty(),
-          canDelete = g.winner != null,
+          canDelete = g.winner != null && isHost,
         )
       }
 
       return SessionDetailUiModel(
         sessionId = session.id,
         status = session.status,
+        isOwnedByCurrentUser = isHost,
         startedAt = session.startedAt,
         playerNamesLine = session.playerIds.joinToString(" · ", transform = ::playerName),
         gamesPlayedCount = stats.gamesPlayed,
@@ -200,9 +215,9 @@ class SessionsViewModel(
     val hasPriorGames = activeSessionGames.any { it.winner != null }
     val currentGameInPlay = bundle.currentGame?.takeIf { it.winner == null }
 
-    // Ensure valid lineup preview for either active session next-game or new session setup
+    // Ensure valid lineup preview for host only (either next-game in active session or new session setup)
     val targetIds: List<String> = when {
-      activeSession != null && currentGameInPlay == null -> activeSession.playerIds
+      activeSession != null && isActiveHost && currentGameInPlay == null -> activeSession.playerIds
       activeSession == null -> local.selectedPlayerIds.filter { id -> activePlayers.any { it.id == id } }
       else -> emptyList()
     }
@@ -244,9 +259,11 @@ class SessionsViewModel(
 
     return SessionsUiState(
       isLoading = false,
+      currentUserId = uid,
       activePlayers = activePlayers,
       selectedPlayerIds = local.selectedPlayerIds,
       activeSession = activeSession,
+      isActiveSessionHost = isActiveHost,
       currentSessionGame = currentGameInPlay,
       currentGameSummary = currentGameInPlay?.let(::lineupSummary),
       previewLineup = validPreview,
@@ -335,6 +352,7 @@ class SessionsViewModel(
   fun startNextGame() {
     val state = uiState.value
     val session = state.activeSession ?: return
+    if (!state.isActiveSessionHost) return
     val lineup = state.previewLineup
     viewModelScope.launch {
       runCatching {

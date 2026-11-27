@@ -144,11 +144,30 @@ fun SessionHistoryScreen(
                   verticalAlignment = Alignment.CenterVertically,
                 ) {
                   Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                      text = "Session · $formattedDate",
-                      style = MaterialTheme.typography.titleMedium,
-                      color = colors.text,
-                    )
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      Text(
+                        text = "Session · $formattedDate",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.text,
+                      )
+                      if (!session.isOwnedByCurrentUser) {
+                        Surface(
+                          shape = RoundedCornerShape(999.dp),
+                          color = colors.surface2,
+                          border = BorderStroke(1.dp, colors.borderStrong),
+                        ) {
+                          Text(
+                            text = "Shared",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textMuted,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                          )
+                        }
+                      }
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                       text = "${session.games.size} game${if (session.games.size == 1) "" else "s"} · ${session.durationText}",
@@ -163,26 +182,28 @@ fun SessionHistoryScreen(
                   )
                 }
 
-                Row(
-                  modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                  horizontalArrangement = Arrangement.End,
-                ) {
-                  TextButton(
-                    onClick = { sessionToDelete = session },
+                if (session.isOwnedByCurrentUser) {
+                  Row(
                     modifier = Modifier
-                      .heightIn(min = 48.dp)
-                      .testTag("delete_session_${session.sessionId}"),
+                      .fillMaxWidth()
+                      .padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.End,
                   ) {
-                    Icon(
-                      imageVector = Icons.Rounded.Delete,
-                      contentDescription = null,
-                      tint = colors.danger,
-                      modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Delete session", color = colors.danger, fontWeight = FontWeight.SemiBold)
+                    TextButton(
+                      onClick = { sessionToDelete = session },
+                      modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("delete_session_${session.sessionId}"),
+                    ) {
+                      Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = colors.danger,
+                        modifier = Modifier.size(18.dp),
+                      )
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text("Delete session", color = colors.danger, fontWeight = FontWeight.SemiBold)
+                    }
                   }
                 }
 

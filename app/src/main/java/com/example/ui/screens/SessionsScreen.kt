@@ -146,6 +146,7 @@ fun SessionsScreen(
           if (activeSession != null) {
             // Active or Paused session view
             val isPaused = activeSession.status == SessionStatus.PAUSED
+            val isHost = state.isActiveSessionHost
             Row(
               modifier = Modifier.fillMaxWidth(),
               verticalAlignment = Alignment.CenterVertically,
@@ -153,7 +154,7 @@ fun SessionsScreen(
             ) {
               Column(modifier = Modifier.weight(1f)) {
                 Text(
-                  text = "Current session",
+                  text = if (isHost) "Current session" else "Live shared session",
                   style = MaterialTheme.typography.headlineMedium,
                   color = colors.text,
                 )
@@ -166,19 +167,46 @@ fun SessionsScreen(
                   color = colors.textMuted,
                 )
               }
-              Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = if (isPaused) colors.teamASoft else colors.brand.copy(alpha = 0.14f),
-              ) {
-                Text(
-                  text = if (isPaused) "PAUSED" else "ACTIVE",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = if (isPaused) colors.teamA else colors.brand,
-                  modifier = Modifier
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                    .testTag("session_status_badge"),
-                )
+              Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!isHost) {
+                  Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = colors.surface2,
+                    border = BorderStroke(1.dp, colors.borderStrong),
+                  ) {
+                    Text(
+                      text = "SHARED · LIVE",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = colors.textMuted,
+                      modifier = Modifier
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .testTag("shared_live_badge"),
+                    )
+                  }
+                }
+                Surface(
+                  shape = RoundedCornerShape(999.dp),
+                  color = if (isPaused) colors.teamASoft else colors.brand.copy(alpha = 0.14f),
+                ) {
+                  Text(
+                    text = if (isPaused) "PAUSED" else "ACTIVE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isPaused) colors.teamA else colors.brand,
+                    modifier = Modifier
+                      .padding(horizontal = 10.dp, vertical = 5.dp)
+                      .testTag("session_status_badge"),
+                  )
+                }
               }
+            }
+
+            if (!isHost) {
+              Text(
+                text = "Hosted by another player — live scores sync automatically.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+                modifier = Modifier.testTag("shared_session_readonly_note"),
+              )
             }
 
             if (state.currentSessionGame != null) {
@@ -216,11 +244,14 @@ fun SessionsScreen(
                   ) {
                     Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Back to scoring", fontWeight = FontWeight.Bold)
+                    Text(
+                      text = if (isHost) "Back to scoring" else "View scoreboard",
+                      fontWeight = FontWeight.Bold,
+                    )
                   }
                 }
               }
-            } else {
+            } else if (isHost) {
               state.previewLineup?.let { lineup ->
                 LineupPreviewSection(
                   lineup = lineup,
@@ -250,6 +281,29 @@ fun SessionsScreen(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Start next game", fontWeight = FontWeight.Bold)
               }
+            } else {
+              Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+              ) {
+                Column(
+                  modifier = Modifier.padding(16.dp),
+                  verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                  Text(
+                    text = "BETWEEN GAMES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textFaint,
+                  )
+                  Text(
+                    text = "Waiting for the host to start the next game.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted,
+                  )
+                }
+              }
             }
 
             HorizontalDivider(color = colors.border)
@@ -259,23 +313,25 @@ fun SessionsScreen(
               horizontalArrangement = Arrangement.spacedBy(10.dp),
               verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-              OutlinedButton(
-                onClick = {
-                  if (isPaused) viewModel.resumeSession() else viewModel.pauseSession()
-                },
-                border = BorderStroke(1.dp, colors.borderStrong),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
-                modifier = Modifier
-                  .heightIn(min = 48.dp)
-                  .testTag("pause_resume_session_button"),
-              ) {
-                Icon(
-                  imageVector = if (isPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
-                  contentDescription = null,
-                  modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(if (isPaused) "Resume" else "Pause")
+              if (isHost) {
+                OutlinedButton(
+                  onClick = {
+                    if (isPaused) viewModel.resumeSession() else viewModel.pauseSession()
+                  },
+                  border = BorderStroke(1.dp, colors.borderStrong),
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
+                  modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("pause_resume_session_button"),
+                ) {
+                  Icon(
+                    imageVector = if (isPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(if (isPaused) "Resume" else "Pause")
+                }
               }
 
               OutlinedButton(
@@ -291,17 +347,19 @@ fun SessionsScreen(
                 Text("View details")
               }
 
-              OutlinedButton(
-                onClick = { showEndSessionDialog = true },
-                border = BorderStroke(1.dp, colors.danger.copy(alpha = 0.55f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
-                modifier = Modifier
-                  .heightIn(min = 48.dp)
-                  .testTag("end_session_button"),
-              ) {
-                Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("End session")
+              if (isHost) {
+                OutlinedButton(
+                  onClick = { showEndSessionDialog = true },
+                  border = BorderStroke(1.dp, colors.danger.copy(alpha = 0.55f)),
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
+                  modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("end_session_button"),
+                ) {
+                  Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text("End session")
+                }
               }
             }
           } else {

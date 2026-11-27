@@ -25,6 +25,9 @@ interface PlayerDao {
   @Upsert
   suspend fun upsertAll(entities: List<PlayerEntity>)
 
+  @Query("DELETE FROM players WHERE id = :id")
+  suspend fun deleteById(id: String)
+
   @Query("DELETE FROM players")
   suspend fun deleteAll()
 }

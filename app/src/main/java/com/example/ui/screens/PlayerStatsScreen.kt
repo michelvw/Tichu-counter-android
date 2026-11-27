@@ -21,11 +21,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,21 +48,28 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.auth.GoogleAuthHelper
 import com.example.ui.components.ConfirmActionDialog
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.TichuTopBar
 import com.example.ui.theme.MonoTabularStyle
 import com.example.ui.theme.TichuTheme
 import com.example.ui.viewmodel.PlayersViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun PlayerStatsScreen(
@@ -66,11 +79,19 @@ fun PlayerStatsScreen(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val colors = TichuTheme.colors
   val snackbarHostState = remember { SnackbarHostState() }
+  val clipboardManager = LocalClipboardManager.current
+  val context = LocalContext.current
+  val credentialManager = remember(context) { CredentialManager.create(context) }
+  val scope = rememberCoroutineScope()
 
   var showRenameDialog by remember { mutableStateOf(false) }
   var renameDraft by remember { mutableStateOf("") }
   var showResetStatsDialog by remember { mutableStateOf(false) }
   var showArchiveDialog by remember { mutableStateOf(false) }
+  var showUnlinkDialog by remember { mutableStateOf(false) }
+  var showGuestSignInDialog by remember { mutableStateOf(false) }
+  var isSigningIn by remember { mutableStateOf(false) }
+  var signInError by remember { mutableStateOf<String?>(null) }
 
   LaunchedEffect(state.archivedSuccessNavigateBack) {
     if (state.archivedSuccessNavigateBack) {
@@ -86,8 +107,78 @@ fun PlayerStatsScreen(
     }
   }
 
+  LaunchedEffect(state.statusMessage) {
+    val msg = state.statusMessage
+    if (!msg.isNullOrBlank()) {
+      snackbarHostState.showSnackbar(msg)
+      viewModel.consumeStatus()
+    }
+  }
+
   val player = state.selectedPlayer
   val stats = state.selectedPlayerStats
+  val isHost = player != null && (state.isGuestMode || player.ownerUid.isBlank() || player.ownerUid == state.currentUserId)
+  val isSelfLinked = !state.isGuestMode && player != null && isHost && player.linkedUid == state.currentUserId
+
+  val invite = state.generatedInvite
+  if (invite != null) {
+    AlertDialog(
+      onDismissRequest = viewModel::dismissGeneratedInvite,
+      containerColor = colors.surface,
+      title = { Text("Share invite code", color = colors.text) },
+      text = {
+        Column(
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text(
+            text = "Ask ${invite.playerName} to open Players → Claim in their signed-in app and enter this single-use code (valid 7 days):",
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textMuted,
+          )
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = colors.surface2,
+            border = BorderStroke(1.dp, colors.borderStrong),
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text(
+              text = invite.code,
+              style = MonoTabularStyle.copy(fontSize = 24.sp, fontWeight = FontWeight.ExtraBold),
+              color = colors.brand,
+              modifier = Modifier
+                .padding(vertical = 14.dp)
+                .align(Alignment.CenterHorizontally)
+                .testTag("generated_invite_code"),
+            )
+          }
+          OutlinedButton(
+            onClick = {
+              clipboardManager.setText(AnnotatedString(invite.code))
+              scope.launch { snackbarHostState.showSnackbar("Invite code copied.") }
+            },
+            modifier = Modifier
+              .fillMaxWidth()
+              .heightIn(min = 48.dp)
+              .testTag("copy_invite_code_button"),
+          ) {
+            Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Copy code", fontWeight = FontWeight.SemiBold)
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = viewModel::dismissGeneratedInvite,
+          modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+          Text("Done", color = colors.brand, fontWeight = FontWeight.Bold)
+        }
+      },
+    )
+  }
 
   if (showRenameDialog && player != null) {
     AlertDialog(
@@ -157,6 +248,93 @@ fun PlayerStatsScreen(
     )
   }
 
+  if (showUnlinkDialog && player != null) {
+    ConfirmActionDialog(
+      title = if (isSelfLinked || !isHost) "Unlink your account?" else "Unlink account?",
+      message = when {
+        isSelfLinked ->
+          "Remove your account link from ${player.name}? They will remain in your roster as a guest player."
+        isHost ->
+          "Remove the linked user account from ${player.name}? They will return to guest status, and the other user will lose live sync access."
+        else ->
+          "Unlink your account from ${player.name}? You will no longer see sessions hosted by this group."
+      },
+      confirmLabel = "Unlink",
+      isDanger = true,
+      onConfirm = {
+        showUnlinkDialog = false
+        viewModel.unlinkSelectedPlayer()
+      },
+      onDismiss = { showUnlinkDialog = false },
+    )
+  }
+
+  if (showGuestSignInDialog && player != null) {
+    AlertDialog(
+      onDismissRequest = { if (!isSigningIn) showGuestSignInDialog = false },
+      containerColor = colors.surface,
+      title = { Text("Sign in to link player", color = colors.text) },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text(
+            text = "Sign in with Google to generate a single-use invite code and link ${player.name} to their account.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textMuted,
+          )
+          if (!signInError.isNullOrBlank()) {
+            Text(
+              text = signInError.orEmpty(),
+              style = MaterialTheme.typography.bodySmall,
+              color = colors.danger,
+            )
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            if (isSigningIn) return@TextButton
+            isSigningIn = true
+            signInError = null
+            GoogleAuthHelper.onGoogleSignInClicked(
+              context = context,
+              credentialManager = credentialManager,
+              onAuthSuccess = {
+                isSigningIn = false
+                showGuestSignInDialog = false
+              },
+              onAuthError = { msg ->
+                isSigningIn = false
+                signInError = msg
+              },
+              scope = scope,
+              onAuthCancelled = {
+                isSigningIn = false
+              },
+            )
+          },
+          enabled = !isSigningIn,
+          modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+          if (isSigningIn) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+          } else {
+            Text("Sign in with Google", color = colors.brand, fontWeight = FontWeight.Bold)
+          }
+        }
+      },
+      dismissButton = {
+        TextButton(
+          onClick = { showGuestSignInDialog = false },
+          enabled = !isSigningIn,
+          modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+          Text("Cancel", color = colors.textMuted)
+        }
+      },
+    )
+  }
+
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -205,28 +383,42 @@ fun PlayerStatsScreen(
                   color = colors.onBrand,
                 )
               }
-              Text(
-                text = player.name,
-                style = MaterialTheme.typography.headlineMedium,
-                color = colors.text,
-                modifier = Modifier
-                  .weight(1f)
-                  .testTag("player_stats_name"),
-              )
-              IconButton(
-                onClick = {
-                  renameDraft = player.name
-                  showRenameDialog = true
-                },
-                modifier = Modifier
-                  .size(48.dp)
-                  .testTag("rename_player_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.Rounded.Edit,
-                  contentDescription = "Rename player",
-                  tint = colors.brand,
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = player.name,
+                  style = MaterialTheme.typography.headlineMedium,
+                  color = colors.text,
+                  modifier = Modifier.testTag("player_stats_name"),
                 )
+                val statusSubtitle = when {
+                  state.isGuestMode -> "Local profile · Saved on this device"
+                  !isHost -> "Linked to your account · Managed by host"
+                  isSelfLinked -> "Linked to your account · ${player.linkedLabel ?: "You"}"
+                  player.linkedUid != null -> "Linked to ${player.linkedLabel ?: "user account"}"
+                  else -> "Guest player · Not linked to an account"
+                }
+                Text(
+                  text = statusSubtitle,
+                  style = MaterialTheme.typography.labelMedium,
+                  color = if (player.linkedUid != null) colors.brand else colors.textMuted,
+                )
+              }
+              if (isHost) {
+                IconButton(
+                  onClick = {
+                    renameDraft = player.name
+                    showRenameDialog = true
+                  },
+                  modifier = Modifier
+                    .size(48.dp)
+                    .testTag("rename_player_button"),
+                ) {
+                  Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Rename player",
+                    tint = colors.brand,
+                  )
+                }
               }
             }
 
@@ -333,34 +525,114 @@ fun PlayerStatsScreen(
               }
             }
 
-            // Actions
-            OutlinedButton(
-              onClick = { showResetStatsDialog = true },
-              border = BorderStroke(1.dp, colors.borderStrong),
-              colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
-              modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("reset_player_stats_button"),
-            ) {
-              Icon(Icons.Rounded.RestartAlt, contentDescription = null)
-              Spacer(modifier = Modifier.width(8.dp))
-              Text("Reset statistics", fontWeight = FontWeight.SemiBold)
-            }
-
-            if (player.active) {
+            // Account linking actions
+            if (state.isGuestMode) {
               OutlinedButton(
-                onClick = { showArchiveDialog = true },
-                border = BorderStroke(1.dp, colors.danger.copy(alpha = 0.55f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
+                onClick = {
+                  signInError = null
+                  showGuestSignInDialog = true
+                },
+                border = BorderStroke(1.dp, colors.borderStrong),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.brand),
                 modifier = Modifier
                   .fillMaxWidth()
                   .heightIn(min = 48.dp)
-                  .testTag("archive_player_button"),
+                  .testTag("guest_link_sign_in_button"),
               ) {
-                Icon(Icons.Rounded.Archive, contentDescription = null)
+                Icon(Icons.Rounded.Link, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Archive player", fontWeight = FontWeight.SemiBold)
+                Text("Sign in to link account", fontWeight = FontWeight.SemiBold)
+              }
+            } else if (isHost && player.linkedUid == null) {
+              Button(
+                onClick = viewModel::generateInviteForSelectedPlayer,
+                enabled = !state.isInviteBusy,
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = colors.brand,
+                  contentColor = colors.onBrand,
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .heightIn(min = 48.dp)
+                  .testTag("link_player_account_button"),
+              ) {
+                if (state.isInviteBusy) {
+                  CircularProgressIndicator(
+                    color = colors.onBrand,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp),
+                  )
+                } else {
+                  Icon(Icons.Rounded.Link, contentDescription = null)
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("Link to user account", fontWeight = FontWeight.Bold)
+                }
+              }
+              if (state.selfLinkedPlayerId == null) {
+                OutlinedButton(
+                  onClick = viewModel::linkSelfToSelectedPlayer,
+                  enabled = !state.isInviteBusy,
+                  border = BorderStroke(1.dp, colors.borderStrong),
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.brand),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("link_self_account_button"),
+                ) {
+                  Icon(Icons.Rounded.Person, contentDescription = null)
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("This is me (link my account)", fontWeight = FontWeight.SemiBold)
+                }
+              }
+            } else if (player.linkedUid != null) {
+              OutlinedButton(
+                onClick = { showUnlinkDialog = true },
+                enabled = !state.isInviteBusy,
+                border = BorderStroke(1.dp, colors.borderStrong),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .heightIn(min = 48.dp)
+                  .testTag("unlink_player_account_button"),
+              ) {
+                Icon(Icons.Rounded.LinkOff, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  if (isSelfLinked || !isHost) "Unlink my account" else "Unlink user account",
+                  fontWeight = FontWeight.SemiBold,
+                )
+              }
+            }
+
+            if (isHost) {
+              OutlinedButton(
+                onClick = { showResetStatsDialog = true },
+                border = BorderStroke(1.dp, colors.borderStrong),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .heightIn(min = 48.dp)
+                  .testTag("reset_player_stats_button"),
+              ) {
+                Icon(Icons.Rounded.RestartAlt, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Reset statistics", fontWeight = FontWeight.SemiBold)
+              }
+
+              if (player.active) {
+                OutlinedButton(
+                  onClick = { showArchiveDialog = true },
+                  border = BorderStroke(1.dp, colors.danger.copy(alpha = 0.55f)),
+                  colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("archive_player_button"),
+                ) {
+                  Icon(Icons.Rounded.Archive, contentDescription = null)
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text("Archive player", fontWeight = FontWeight.SemiBold)
+                }
               }
             }
           }

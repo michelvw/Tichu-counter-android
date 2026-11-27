@@ -107,8 +107,10 @@ private val TOP_LEVEL_TABS = listOf(
 @Composable
 fun TichuAppRoot(
   repository: TichuRepository,
+  onSignOut: () -> Unit = {},
   navController: NavHostController = rememberNavController(),
 ) {
+  val uid = if (repository.isGuestMode) "guest" else repository.currentUserId
   val colors = TichuTheme.colors
   val backStackEntry by navController.currentBackStackEntryAsState()
   val currentDestination = backStackEntry?.destination
@@ -206,7 +208,10 @@ fun TichuAppRoot(
           modifier = Modifier.weight(1f),
         ) {
           composable(Routes.SCOREBOARD) {
-            val vm: ScoreboardViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: ScoreboardViewModel = viewModel(
+              key = "${uid}_scoreboard",
+              factory = AppViewModelFactory(repository),
+            )
             ScoreboardScreen(
               viewModel = vm,
               onOpenRoundScores = { navController.navigate(Routes.ROUND_SCORES_LIVE) },
@@ -216,7 +221,10 @@ fun TichuAppRoot(
           }
 
           composable(Routes.SESSIONS) {
-            val vm: SessionsViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: SessionsViewModel = viewModel(
+              key = "${uid}_sessions",
+              factory = AppViewModelFactory(repository),
+            )
             SessionsScreen(
               viewModel = vm,
               onNavigateToScoreboard = { navigateToTab(Routes.SCOREBOARD) },
@@ -227,7 +235,10 @@ fun TichuAppRoot(
           }
 
           composable(Routes.PLAYERS) {
-            val vm: PlayersViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: PlayersViewModel = viewModel(
+              key = "${uid}_players",
+              factory = AppViewModelFactory(repository),
+            )
             PlayersScreen(
               viewModel = vm,
               onOpenPlayerStats = { playerId ->
@@ -237,7 +248,10 @@ fun TichuAppRoot(
           }
 
           composable(Routes.ROUND_SCORES_LIVE) {
-            val vm: RoundScoresViewModel = viewModel(factory = AppViewModelFactory(repository, null))
+            val vm: RoundScoresViewModel = viewModel(
+              key = "${uid}_rounds_live",
+              factory = AppViewModelFactory(repository, null),
+            )
             RoundScoresScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },
@@ -249,7 +263,10 @@ fun TichuAppRoot(
             arguments = listOf(navArgument("gameId") { type = NavType.StringType }),
           ) { entry ->
             val gameId = entry.arguments?.getString("gameId")
-            val vm: RoundScoresViewModel = viewModel(factory = AppViewModelFactory(repository, gameId))
+            val vm: RoundScoresViewModel = viewModel(
+              key = "${uid}_rounds_$gameId",
+              factory = AppViewModelFactory(repository, gameId),
+            )
             RoundScoresScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },
@@ -257,15 +274,22 @@ fun TichuAppRoot(
           }
 
           composable(Routes.SETTINGS) {
-            val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: SettingsViewModel = viewModel(
+              key = "${uid}_settings",
+              factory = AppViewModelFactory(repository),
+            )
             SettingsScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },
+              onSignOut = onSignOut,
             )
           }
 
           composable(Routes.SESSION_DETAILS) {
-            val vm: SessionsViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: SessionsViewModel = viewModel(
+              key = "${uid}_session_details",
+              factory = AppViewModelFactory(repository),
+            )
             SessionDetailsScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },
@@ -279,7 +303,10 @@ fun TichuAppRoot(
           }
 
           composable(Routes.SESSION_HISTORY) {
-            val vm: SessionsViewModel = viewModel(factory = AppViewModelFactory(repository))
+            val vm: SessionsViewModel = viewModel(
+              key = "${uid}_session_history",
+              factory = AppViewModelFactory(repository),
+            )
             SessionHistoryScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },
@@ -297,7 +324,10 @@ fun TichuAppRoot(
             arguments = listOf(navArgument("playerId") { type = NavType.StringType }),
           ) { entry ->
             val playerId = entry.arguments?.getString("playerId")
-            val vm: PlayersViewModel = viewModel(factory = AppViewModelFactory(repository, playerId))
+            val vm: PlayersViewModel = viewModel(
+              key = "${uid}_player_stats_$playerId",
+              factory = AppViewModelFactory(repository, playerId),
+            )
             PlayerStatsScreen(
               viewModel = vm,
               onBack = { navController.popBackStack() },

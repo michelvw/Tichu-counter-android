@@ -1,0 +1,196 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Private preferences, quick-game pointers, and profile metadata for a signed-in user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "displayName": { "type": "string", "description": "Display name shown in account settings." },
+        "themeMode": { "type": "string", "enum": ["system", "light", "dark"] },
+        "winThreshold": { "type": "integer", "description": "Default target points to win a game." },
+        "chipsVisible": { "type": "boolean" },
+        "modeHintDismissed": { "type": "boolean" },
+        "playersRankingSort": { "type": "string" },
+        "sessionRankingSort": { "type": "string" },
+        "currentSessionGameId": { "type": "string", "description": "Optional active session game ID." },
+        "quickGameId": { "type": "string", "description": "Optional active quick game ID." },
+        "quickTeamAName": { "type": "string" },
+        "quickTeamBName": { "type": "string" },
+        "localMigratedAt": { "type": "integer", "description": "Epoch millis when local Room data was uploaded." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "themeMode",
+        "winThreshold",
+        "chipsVisible",
+        "modeHintDismissed",
+        "playersRankingSort",
+        "sessionRankingSort",
+        "quickTeamAName",
+        "quickTeamBName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A Tichu roster player owned by a host user and optionally linked to a real user account.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "description": "UID of the user who created/manages this player." },
+        "linkedUid": { "type": "string", "description": "Optional Firebase Auth UID once claimed/linked." },
+        "linkedLabel": { "type": "string", "description": "Optional label for the linked account." },
+        "memberUids": { "type": "array", "description": "UIDs authorized to read this player (ownerUid and optional linkedUid)." },
+        "name": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAtMs": { "type": "integer" },
+        "statsResetAt": { "type": "integer" },
+        "lastClaimCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "ownerUid",
+        "memberUids",
+        "name",
+        "active",
+        "createdAtMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PlayerInvite": {
+      "title": "PlayerInvite",
+      "description": "Short-lived invite token enabling an authenticated user to claim an unlinked guest player.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "playerId": { "type": "string" },
+        "playerName": { "type": "string" },
+        "sessionIds": { "type": "array", "description": "Session IDs containing playerId for access backfill." },
+        "gameIds": { "type": "array", "description": "Game IDs containing playerId for access backfill." },
+        "status": { "type": "string", "enum": ["pending", "claimed", "revoked"] },
+        "expiresAtMs": { "type": "integer" },
+        "claimedByUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "ownerUid",
+        "playerId",
+        "playerName",
+        "sessionIds",
+        "gameIds",
+        "status",
+        "expiresAtMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A Tichu game-night session hosted by ownerUid and visible to linked participants.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "participantUids": { "type": "array", "description": "UIDs of owner and any linked players in this session." },
+        "status": { "type": "string", "enum": ["active", "paused", "ended"] },
+        "playerIds": { "type": "array" },
+        "nextPoolStart": { "type": "integer" },
+        "pauseLog": { "type": "array" },
+        "startedAtMs": { "type": "integer" },
+        "endedAtMs": { "type": "integer" },
+        "lastLinkedPlayerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "ownerUid",
+        "participantUids",
+        "status",
+        "playerIds",
+        "nextPoolStart",
+        "pauseLog",
+        "startedAtMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Game": {
+      "title": "Game",
+      "description": "A Tichu game (quick, fixed 4p, rotation 5p, or threeTeams 6p) and its recorded rounds.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "participantUids": { "type": "array" },
+        "sessionId": { "type": "string" },
+        "mode": { "type": "string", "enum": ["quick", "fixed", "rotation", "threeTeams"] },
+        "playerIds": { "type": "array", "description": "Flat list of player IDs participating in this game." },
+        "team0": { "type": "array" },
+        "team1": { "type": "array" },
+        "team2": { "type": "array" },
+        "fixedTeam": { "type": "array" },
+        "pool": { "type": "array" },
+        "firstRestingTeam": { "type": "integer" },
+        "winThreshold": { "type": "integer" },
+        "teamAName": { "type": "string" },
+        "teamBName": { "type": "string" },
+        "winner": { "type": "string" },
+        "pendingNextGame": { "type": "boolean" },
+        "finalScores": { "type": "object" },
+        "nextDealerPlayerId": { "type": "string" },
+        "startedAtMs": { "type": "integer" },
+        "endedAtMs": { "type": "integer" },
+        "rounds": { "type": "array" },
+        "lastLinkedPlayerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "ownerUid",
+        "participantUids",
+        "mode",
+        "playerIds",
+        "team0",
+        "team1",
+        "team2",
+        "fixedTeam",
+        "pool",
+        "winThreshold",
+        "teamAName",
+        "teamBName",
+        "pendingNextGame",
+        "startedAtMs",
+        "rounds",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserSettings" },
+      "description": "User-scoped preferences and state pointers."
+    },
+    "/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Host-owned roster players, linkable to user accounts."
+    },
+    "/playerInvites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/PlayerInvite" },
+      "description": "Single-use claim invites for linking guest players to user accounts."
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/Session" },
+      "description": "Tichu sessions accessible to the host and linked participants."
+    },
+    "/games/{gameId}": {
+      "schema": { "$ref": "#/entities/Game" },
+      "description": "Tichu games and round histories."
+    }
+  }
+}
